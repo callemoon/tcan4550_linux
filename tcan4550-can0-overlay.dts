@@ -1,0 +1,55 @@
+/*
+ * Device tree overlay for tcan4550 on spi0.0
+ */
+
+/dts-v1/;
+/plugin/;
+
+/ {
+    compatible = "brcm,bcm2835";
+    /* disable spi-dev for spi0.0 */
+    fragment@0 {
+        target = <&spi0>;
+        __overlay__ {
+            status = "okay";
+        };
+    };
+
+    fragment@1 {
+	    target = <&spidev0>;
+	    __overlay__ {
+	        status = "disabled";
+	    };
+    };
+
+    /* the interrupt pin of the can-controller */
+    fragment@2 {
+        target = <&gpio>;
+        __overlay__ {
+            can_int_pins: can_int_pins {
+                brcm,pins = <25>;
+                brcm,function = <0>; /* input */
+                brcm,pull = <0>; /* none */
+            };
+        };
+    };
+
+    /* the spi config of the can-controller itself binding everything together */
+    fragment@3 {
+        target = <&spi0>;
+        __overlay__ {
+            /* needed to avoid dtc warning */
+            #address-cells = <1>;
+            #size-cells = <0>;
+            can0: tcan4550@0 {
+                reg = <0>;
+                compatible = "ti,tcan4550";
+                pinctrl-names = "default";
+                pinctrl-0 = <&can_int_pins>;
+                spi-max-frequency = <18000000>;
+                interrupt-parent = <&gpio>;
+                interrupts = <25 0x8>; /* active low */
+            };
+        };
+    };
+};
