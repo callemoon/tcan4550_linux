@@ -25,8 +25,8 @@ Run script: ./stop_can
 
 ## performance
 
-To generate load use cangen can0 -g0
-To receive data use candump can0
+To generate load use cangen can0 -g0 (g0 means no gap between messages)
+To measure busload use canbusload can0@500000
 
 TX ~70%@500kbit/s
 RX >60%@500kbit/s
