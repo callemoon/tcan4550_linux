@@ -81,12 +81,14 @@ struct tcan4550_priv
     struct device *dev;
     struct net_device *ndev;
     struct spi_device *spi;
+
+    struct mutex spi_lock; /* SPI device lock */
 };
 
 static struct spi_device *spi = 0;  // global spi handle
 
 // tcan function headers
-static bool tcan4550_sendMsg(struct canfd_frame *msg, uint32_t *index);
+static int tcan4550_sendMsg(struct canfd_frame *msg, uint32_t *index);
 static void tcan4550_set_normal_mode(void);
 static void tcan4550_set_standby_mode(void);
 static void tcan4550_configure_mram(void);
@@ -316,7 +318,7 @@ static void tcan4550_unlock()
     spi_write32(CCCR, val);
 }
 
-static bool tcan4550_sendMsg(struct canfd_frame *msg, uint32_t *index)
+static int tcan4550_sendMsg(struct canfd_frame *msg, uint32_t *index)
 {
     // check for free buffers
     uint32_t txqfs = spi_read32(TXQFS);
@@ -336,11 +338,9 @@ static bool tcan4550_sendMsg(struct canfd_frame *msg, uint32_t *index)
         spi_write128(baseAddress, buffer);  // write message id,len and data
 
         spi_write32(TXBAR, (1 << writeIndex)); // request buffer transmission
-
-        return true;
     }
 
-    return false;
+    return freeBuffers;
 }
 
 bool tcan4550_recMsg(struct canfd_frame *msg)
@@ -380,8 +380,11 @@ bool tcan4550_recMsg(struct canfd_frame *msg)
 
 static irqreturn_t tcan4450_handleInterrupts(int irq, void *dev)
 {
+    struct tcan4550_priv *priv = netdev_priv(dev);
     struct net_device_stats *stats = &((struct net_device *)dev)->stats;
    
+    mutex_lock(&priv->spi_lock);
+
     uint32_t ir = spi_read32(IR);
     spi_write32(IR, ir);    // acknowledge interrupts
 
@@ -426,9 +429,9 @@ static irqreturn_t tcan4450_handleInterrupts(int irq, void *dev)
     // Tx fifo empty
     if(ir & TFE)
     {
-        can_free_echo_skb(dev, 0, 0);
+       // can_free_echo_skb(dev, 0, 0);
 
-        //if(netif_tx_queue_stopped(dev))
+        if(netif_tx_queue_stopped(dev))
         {
             netif_wake_queue(dev);
         }
@@ -444,6 +447,7 @@ static irqreturn_t tcan4450_handleInterrupts(int irq, void *dev)
 
     }
 
+    mutex_unlock(&priv->spi_lock);
 
     return IRQ_HANDLED;
 }
@@ -468,7 +472,7 @@ static int tcan4550_setupInterrupts(struct net_device *dev)
     // interrupt enables
     spi_write32(INTERRUPT_ENABLE, 0);
 
-    err = request_irq(spi->irq, tcan4450_handleInterrupts, IRQF_SHARED, dev->name, dev);
+    err = request_threaded_irq(spi->irq, NULL, tcan4450_handleInterrupts, IRQF_SHARED, dev->name, dev);
     if(err)
     {
         return err;
@@ -540,6 +544,8 @@ static int tcan_open(struct net_device *dev)
 
     netif_start_queue(dev);
 
+    mutex_init(&priv->spi_lock);
+
     return 0;
 }
 
@@ -565,6 +571,9 @@ static netdev_tx_t t_can_start_xmit(struct sk_buff *skb,
     struct can_frame *frame = (struct can_frame *)skb->data;
     struct canfd_frame msg;
     uint32_t index;
+    struct tcan4550_priv *priv;
+
+    priv = netdev_priv(dev);   // get the private
 
     // drop invalid can msgs
     if (can_dev_dropped_skb(dev, skb))
@@ -583,16 +592,27 @@ static netdev_tx_t t_can_start_xmit(struct sk_buff *skb,
     msg.data[6] = frame->data[6];
     msg.data[7] = frame->data[7];
 
-    netif_stop_queue(dev);
+    mutex_lock(&priv->spi_lock);
 
     // If sending is ok, also copy to echo buffer
-    if(tcan4550_sendMsg(&msg, &index))
+    if(tcan4550_sendMsg(&msg, &index))  
     {
         can_put_echo_skb(skb, dev, index, 0);
+        can_free_echo_skb(dev, 0, 0);
 
         stats->tx_packets++;
         stats->tx_bytes+=msg.len;
     }
+    else
+    {
+        netif_stop_queue(dev);  // if free buffers = 1 it might fail next write so stop now. queue will wake up when FIFO is empty.
+
+        mutex_unlock(&priv->spi_lock);
+
+        return NETDEV_TX_BUSY;
+    }
+
+    mutex_unlock(&priv->spi_lock);
 
     return NETDEV_TX_OK;
 }
