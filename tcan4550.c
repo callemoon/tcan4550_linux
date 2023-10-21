@@ -26,54 +26,54 @@
 
 #include <linux/interrupt.h>
 
-#include <linux/gpio.h>     //GPIO
+#include <linux/gpio.h> 
 
 #include "tcan4550.h"
 
 // Registers
-const uint32_t DEVICE_ID1 = 0x0;
-const uint32_t DEVICE_ID2 = 0x4;
+const static uint32_t DEVICE_ID1 = 0x0;
+const static uint32_t DEVICE_ID2 = 0x4;
 
-const uint32_t STATUS = 0x0C;
-const uint32_t SPI_MASK = 0x10;
+const static uint32_t STATUS = 0x0C;
+const static uint32_t SPI_MASK = 0x10;
 
-const uint32_t MODES_OF_OPERATION = 0x0800;
-const uint32_t INTERRUPT_FLAGS = 0x0820;
-const uint32_t INTERRUPT_ENABLE = 0x0830;
+const static uint32_t MODES_OF_OPERATION = 0x0800;
+const static uint32_t INTERRUPT_FLAGS = 0x0820;
+const static uint32_t INTERRUPT_ENABLE = 0x0830;
 
-const uint32_t CCCR = 0x1018;
-const uint32_t NBTP = 0x101C;
-const uint32_t RXF0S = 0x10A4;
-const uint32_t RXF0C = 0x10A0;
-const uint32_t RXF0A = 0x10A8;
-const uint32_t TXBC = 0x10C0;
-const uint32_t TXESC = 0x10C8;
-const uint32_t RXESC = 0x10BC;
-const uint32_t TXQFS = 0x10C4;
-const uint32_t TXBAR = 0x10D0;
+const static uint32_t CCCR = 0x1018;
+const static uint32_t NBTP = 0x101C;
+const static uint32_t RXF0S = 0x10A4;
+const static uint32_t RXF0C = 0x10A0;
+const static uint32_t RXF0A = 0x10A8;
+const static uint32_t TXBC = 0x10C0;
+const static uint32_t TXESC = 0x10C8;
+const static uint32_t RXESC = 0x10BC;
+const static uint32_t TXQFS = 0x10C4;
+const static uint32_t TXBAR = 0x10D0;
 
 const static uint32_t IR = 0x1050;  // interrupt register
 const static uint32_t IE = 0x1054;  // interrupt enable
 const static uint32_t ILE = 0x105C; // interrupt line enable
 
-const static uint32_t RF0N = 0x1;   // rx fifo 0 new data
+const static uint32_t RF0N = (0x1UL << 0);   // rx fifo 0 new data
 const static uint32_t TC = (0x1UL << 9);  // transmission complete
 const static uint32_t TFE = (0x1UL << 11);    // transmit fifo empty
+const static uint32_t EW = (0x1UL << 24);    // error warning
 const static uint32_t BO = (0x1UL << 25);    // bus off
-const static uint32_t EW = (0x1UL << 24);    // warning
 
 
 // MRAM config
-const uint32_t RX_SLOT_SIZE = 16;
-const uint32_t TX_SLOT_SIZE = 16;
-const uint32_t TX_MSG_BOXES = 16;
-const uint32_t TX_FIFO_START_ADDRESS = 0x0;
-const uint32_t RX_MSG_BOXES = 16;
-const uint32_t RX_FIFO_START_ADDRESS = 0x200;
+const static uint32_t RX_SLOT_SIZE = 16;
+const static uint32_t TX_SLOT_SIZE = 16;
+const static uint32_t TX_MSG_BOXES = 16;
+const static uint32_t TX_FIFO_START_ADDRESS = 0x0;
+const static uint32_t RX_MSG_BOXES = 16;
+const static uint32_t RX_FIFO_START_ADDRESS = 0x200;
 
-const uint32_t MRAM_BASE = 0x8000;
+const static uint32_t MRAM_BASE = 0x8000;
 
-const uint32_t GPIO_RESET = 21;
+const static uint32_t GPIO_RESET = 21;  // GPIO pin for chip reset
 
 struct tcan4550_priv
 {
@@ -96,6 +96,9 @@ static void tcan4550_unlock(void);
 static bool tcan4550_readIdentification(void);
 static bool tcan4550_setBitRate(uint32_t bitRate);
 static int tcan4550_setupInterrupts(struct net_device *dev);
+static void tcan4550_hwreset(void);
+static void tcan4550_setupIo(void);
+static void tcan4550_freeIo(void);
 static irqreturn_t tcan4450_handleInterrupts(int irq, void *dev);
 
 // spi function headers
@@ -382,10 +385,11 @@ static irqreturn_t tcan4450_handleInterrupts(int irq, void *dev)
 {
     struct tcan4550_priv *priv = netdev_priv(dev);
     struct net_device_stats *stats = &((struct net_device *)dev)->stats;
+    uint32_t ir;
    
     mutex_lock(&priv->spi_lock);
 
-    uint32_t ir = spi_read32(IR);
+    ir = spi_read32(IR);
     spi_write32(IR, ir);    // acknowledge interrupts
 
 //    if(ir == 0)
@@ -393,8 +397,8 @@ static irqreturn_t tcan4450_handleInterrupts(int irq, void *dev)
 //        return IRQ_NONE;
 //    }
 
-    spi_write32(STATUS, 0xFFFFFFFF);
-    spi_write32(INTERRUPT_FLAGS, 0xFFFFFFFF);
+    //spi_write32(STATUS, 0xFFFFFFFF);
+    //spi_write32(INTERRUPT_FLAGS, 0xFFFFFFFF);
 
     // rx fifo 0 new message
     if(ir & RF0N)
@@ -431,7 +435,7 @@ static irqreturn_t tcan4450_handleInterrupts(int irq, void *dev)
     {
        // can_free_echo_skb(dev, 0, 0);
 
-        if(netif_tx_queue_stopped(dev))
+//        if(netif_tx_queue_stopped(dev))
         {
             netif_wake_queue(dev);
         }
@@ -456,7 +460,7 @@ static int tcan4550_setupInterrupts(struct net_device *dev)
 {
     int err;
 
-    spi_write32(IE, RF0N + TFE + BO + EW);  // rx fifo 0 new message + tx fifo empty + transfer complete
+    spi_write32(IE, RF0N + TFE + BO + EW);  // rx fifo 0 new message + tx fifo empty + bus off + warning
 
     spi_write32(ILE, 0x1);  // enable interrupt line 1
 
@@ -472,7 +476,7 @@ static int tcan4550_setupInterrupts(struct net_device *dev)
     // interrupt enables
     spi_write32(INTERRUPT_ENABLE, 0);
 
-    err = request_threaded_irq(spi->irq, NULL, tcan4450_handleInterrupts, IRQF_SHARED, dev->name, dev);
+    err = request_threaded_irq(spi->irq, NULL, tcan4450_handleInterrupts, IRQF_ONESHOT, dev->name, dev);
     if(err)
     {
         return err;
@@ -481,13 +485,30 @@ static int tcan4550_setupInterrupts(struct net_device *dev)
     return 0;
 }
 
-static bool tcan4550_init(struct net_device *dev, uint32_t bitRateReg)
+void tcan4550_setupIo(void)
+{
+    gpio_request(GPIO_RESET,"GPIO_RESET");
+    gpio_direction_output(GPIO_RESET, 0);
+    gpio_set_value(GPIO_RESET, 0);
+}
+
+void tcan4550_freeIo(void)
+{
+    gpio_free(GPIO_RESET);
+}
+
+void tcan4550_hwreset(void)
 {
     gpio_set_value(GPIO_RESET, 1);
     usleep_range(30, 100);  // toggle pin for at least  30us
     gpio_set_value(GPIO_RESET, 0);
 
     usleep_range(700, 1000);    // we need to wait at least 700us for chip to become ready
+}
+
+static bool tcan4550_init(struct net_device *dev, uint32_t bitRateReg)
+{
+    tcan4550_hwreset();
 
     if (!tcan4550_readIdentification())
     {
@@ -524,9 +545,7 @@ static int tcan_open(struct net_device *dev)
     uint32_t bitRateReg = (bt->phase_seg2 - 1) + ((bt->prop_seg + bt->phase_seg1 - 1) << 8) + ((bt->brp - 1) << 16) + ((bt->sjw - 1) << 25);
     int err;
 
-    gpio_request(GPIO_RESET,"GPIO_RESET");
-    gpio_direction_output(GPIO_RESET, 0);
-    gpio_set_value(GPIO_RESET, 0);
+    tcan4550_setupIo();
 
     /* open the can device */
     err = open_candev(dev);
@@ -559,7 +578,7 @@ static int tcan_close(struct net_device *dev)
 
     free_irq(spi->irq, dev);
 
-    gpio_direction_output(GPIO_RESET, 0);
+    tcan4550_freeIo();
 
     return 0;
 }
@@ -605,7 +624,7 @@ static netdev_tx_t t_can_start_xmit(struct sk_buff *skb,
     }
     else
     {
-        netif_stop_queue(dev);  // if free buffers = 1 it might fail next write so stop now. queue will wake up when FIFO is empty.
+        netif_stop_queue(dev);  // queue will wake up when FIFO is empty.
 
         mutex_unlock(&priv->spi_lock);
 
