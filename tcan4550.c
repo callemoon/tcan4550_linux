@@ -57,6 +57,8 @@ const static uint32_t ILE = 0x105C; // interrupt line enable
 const static uint32_t RF0N = 0x1;   // rx fifo 0 new data
 const static uint32_t TC = (0x1UL << 9);  // transmission complete
 const static uint32_t TFE = (0x1UL << 11);    // transmit fifo empty
+const static uint32_t BO = (0x1UL << 25);    // bus off
+const static uint32_t EW = (0x1UL << 24);    // warning
 
 
 // MRAM config
@@ -87,7 +89,7 @@ static void tcan4550_configure_mram(void);
 static void tcan4550_unlock(void);
 static bool tcan4550_readIdentification(void);
 static bool tcan4550_setBitRate(uint32_t bitRate);
-static void tcan4550_setupInterrupts(struct net_device *dev);
+static int tcan4550_setupInterrupts(struct net_device *dev);
 static irqreturn_t tcan4450_handleInterrupts(int irq, void *dev);
 
 // spi function headers
@@ -428,15 +430,25 @@ static irqreturn_t tcan4450_handleInterrupts(int irq, void *dev)
         }
     }
 
+    if(ir & BO)
+    {
+
+    }
+
+    if(ir & EW)
+    {
+
+    }
+
 
     return IRQ_HANDLED;
 }
 
-static void tcan4550_setupInterrupts(struct net_device *dev)
+static int tcan4550_setupInterrupts(struct net_device *dev)
 {
     int err;
 
-    spi_write32(IE, RF0N + TFE);  // rx fifo 0 new message + tx fifo empty + transfer complete
+    spi_write32(IE, RF0N + TFE + BO + EW);  // rx fifo 0 new message + tx fifo empty + transfer complete
 
     spi_write32(ILE, 0x1);  // enable interrupt line 1
 
@@ -455,14 +467,18 @@ static void tcan4550_setupInterrupts(struct net_device *dev)
     err = request_irq(spi->irq, tcan4450_handleInterrupts, IRQF_SHARED, dev->name, dev);
     if(err)
     {
-        netdev_err(dev, "failed to register interrupt\n");
+        return err;
     }
+
+    return 0;
 }
 
 static bool tcan4550_init(struct net_device *dev, uint32_t bitRateReg)
 {
     if (!tcan4550_readIdentification())
     {
+        netdev_err(dev, "failed to read TCAN4550 identification\n");
+
         return false;
     }
 
@@ -470,7 +486,14 @@ static bool tcan4550_init(struct net_device *dev, uint32_t bitRateReg)
     tcan4550_unlock();
     tcan4550_setBitRate(bitRateReg);
     tcan4550_configure_mram();
-    tcan4550_setupInterrupts(dev);
+    
+    if(tcan4550_setupInterrupts(dev))
+    {
+        netdev_err(dev, "failed to register interrupt\n");
+        
+        return false;
+    }
+
     tcan4550_set_normal_mode();
 
     return true;
@@ -495,7 +518,11 @@ static int tcan_open(struct net_device *dev)
         return err;
     }
 
-    tcan4550_init(dev, bitRateReg);
+    if(!tcan4550_init(dev, bitRateReg))
+    {
+        netdev_err(dev, "failed to init tcan\n");
+        return -1;
+    }
 
     netif_start_queue(dev);
 
