@@ -414,6 +414,9 @@ static irqreturn_t tcan4450_handleInterrupts(int irq, void *dev)
 
         if(tcan4550_recMsg(&msg))
         {
+            // no need to keep mutex during this phase
+            mutex_unlock(&priv->spi_lock);
+
             skb = alloc_can_skb(dev, (struct can_frame **)&cf);
 
             if(skb)
@@ -435,6 +438,8 @@ static irqreturn_t tcan4450_handleInterrupts(int irq, void *dev)
                 stats->rx_packets++;
                 stats->rx_bytes+=msg.len;
             }
+
+            mutex_lock(&priv->spi_lock);
         }
     }
 
