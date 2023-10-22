@@ -62,6 +62,10 @@ const static uint32_t TFE = (0x1UL << 11);    // transmit fifo empty
 const static uint32_t EW = (0x1UL << 24);    // error warning
 const static uint32_t BO = (0x1UL << 25);    // bus off
 
+const static uint32_t INIT = 0x1;   // init
+const static uint32_t CCE = 0x2;    // configuration change enable
+const static uint32_t CSR = 0x10;   // clock stop request
+
 
 // MRAM config
 const static uint32_t RX_SLOT_SIZE = 16;
@@ -73,6 +77,7 @@ const static uint32_t RX_FIFO_START_ADDRESS = 0x200;
 
 const static uint32_t MRAM_BASE = 0x8000;
 
+// GPIO
 const static uint32_t GPIO_RESET = 21;  // GPIO pin for chip reset
 
 struct tcan4550_priv
@@ -96,7 +101,7 @@ static void tcan4550_unlock(void);
 static bool tcan4550_readIdentification(void);
 static bool tcan4550_setBitRate(uint32_t bitRate);
 static int tcan4550_setupInterrupts(struct net_device *dev);
-static void tcan4550_hwreset(void);
+static void tcan4550_hwReset(void);
 static void tcan4550_setupIo(void);
 static void tcan4550_freeIo(void);
 static irqreturn_t tcan4450_handleInterrupts(int irq, void *dev);
@@ -315,8 +320,8 @@ static void tcan4550_unlock()
 {
     uint32_t val = spi_read32(CCCR);
 
-    val |= (0x1 + 0x2);		  // set CCE and INIT bits
-    val &= ~((uint32_t)0x10); // clear CSR
+    val |= (CCE + INIT);		  // set CCE and INIT bits
+    val &= ~((uint32_t)CSR); // clear CSR
 
     spi_write32(CCCR, val);
 }
@@ -411,22 +416,25 @@ static irqreturn_t tcan4450_handleInterrupts(int irq, void *dev)
         {
             skb = alloc_can_skb(dev, (struct can_frame **)&cf);
 
-            cf->len = msg.len;
-            cf->can_id = msg.can_id;
+            if(skb)
+            {
+                cf->len = msg.len;
+                cf->can_id = msg.can_id;
 
-            cf->data[0] = msg.data[0];
-            cf->data[1] = msg.data[1];
-            cf->data[2] = msg.data[2];
-            cf->data[3] = msg.data[3];
-            cf->data[4] = msg.data[4];
-            cf->data[5] = msg.data[5];
-            cf->data[6] = msg.data[6];
-            cf->data[7] = msg.data[7];
+                cf->data[0] = msg.data[0];
+                cf->data[1] = msg.data[1];
+                cf->data[2] = msg.data[2];
+                cf->data[3] = msg.data[3];
+                cf->data[4] = msg.data[4];
+                cf->data[5] = msg.data[5];
+                cf->data[6] = msg.data[6];
+                cf->data[7] = msg.data[7];
 
-            netif_receive_skb(skb);
+                netif_receive_skb(skb);
 
-            stats->rx_packets++;
-            stats->rx_bytes+=msg.len;
+                stats->rx_packets++;
+                stats->rx_bytes+=msg.len;
+            }
         }
     }
 
@@ -497,7 +505,7 @@ void tcan4550_freeIo(void)
     gpio_free(GPIO_RESET);
 }
 
-void tcan4550_hwreset(void)
+void tcan4550_hwReset(void)
 {
     gpio_set_value(GPIO_RESET, 1);
     usleep_range(30, 100);  // toggle pin for at least  30us
@@ -508,7 +516,7 @@ void tcan4550_hwreset(void)
 
 static bool tcan4550_init(struct net_device *dev, uint32_t bitRateReg)
 {
-    tcan4550_hwreset();
+    tcan4550_hwReset();
 
     if (!tcan4550_readIdentification())
     {
@@ -561,9 +569,9 @@ static int tcan_open(struct net_device *dev)
         return -1;
     }
 
-    netif_start_queue(dev);
-
     mutex_init(&priv->spi_lock);
+
+    netif_start_queue(dev);
 
     return 0;
 }
