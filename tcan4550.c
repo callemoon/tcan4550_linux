@@ -436,7 +436,7 @@ static irqreturn_t tcan4450_handleInterrupts(int irq, void *dev)
                 cf->data[6] = msg.data[6];
                 cf->data[7] = msg.data[7];
 
-                netif_receive_skb(skb);
+                netif_rx(skb);
 
                 stats->rx_packets++;
                 stats->rx_bytes+=msg.len;
