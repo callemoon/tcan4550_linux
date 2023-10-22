@@ -66,6 +66,9 @@ const static uint32_t INIT = 0x1;   // init
 const static uint32_t CCE = 0x2;    // configuration change enable
 const static uint32_t CSR = 0x10;   // clock stop request
 
+const static uint32_t MODESEL_1 = 0x40;
+const static uint32_t MODESEL_2 = 0x80;
+
 
 // MRAM config
 const static uint32_t RX_SLOT_SIZE = 16;
@@ -253,8 +256,8 @@ static void tcan4550_set_standby_mode(void)
 
     val = spi_read32(MODES_OF_OPERATION);
 
-    val |= 0x40;
-    val &= ~((uint32_t)0x80);
+    val |= MODESEL_1;
+    val &= ~((uint32_t)MODESEL_2);
 
     spi_write32(MODES_OF_OPERATION, val);
 }
@@ -265,8 +268,8 @@ static void tcan4550_set_normal_mode(void)
 
     val = spi_read32(MODES_OF_OPERATION);
 
-    val |= 0x80;
-    val &= ~((uint32_t)0x40);
+    val |= MODESEL_2;
+    val &= ~((uint32_t)MODESEL_1);
 
     spi_write32(MODES_OF_OPERATION, val);
 }
