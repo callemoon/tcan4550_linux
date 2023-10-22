@@ -4,7 +4,7 @@ Tested with CAN FD Click 6 using a TCAN4550 chip https://www.mikroe.com/can-fd-6
 
 ## To connect to Raspberry Pi 4
 
-Driver uses Raspberry Pi SPI 0 so use standard Raspberry Pi SPI 0 pins (MISO, MOSI, CS). GPIO25 is used for interrupt. GPIO21 is used for reset. TCAN board needs both 3V3 and VBAT supply. (6-24v).
+Driver uses Raspberry Pi SPI 0 so use standard Raspberry Pi SPI 0 pins (MOSI pin 19, MISO pin 21, CS pin pin 24). GPIO25 (pin 22) is used for interrupt. GPIO21 (pin 40) is used for reset. TCAN board also needs both 3V3 and VBAT supply. (6-24v).
 
 ## To build driver on Raspberry Pi 4
 
