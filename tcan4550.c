@@ -59,6 +59,7 @@ const static uint32_t ILE = 0x105C; // interrupt line enable
 const static uint32_t RF0N = (0x1UL << 0);   // rx fifo 0 new data
 const static uint32_t TC = (0x1UL << 9);  // transmission complete
 const static uint32_t TFE = (0x1UL << 11);    // transmit fifo empty
+const static uint32_t EP = (0x1UL << 23);    // error passive
 const static uint32_t EW = (0x1UL << 24);    // error warning
 const static uint32_t BO = (0x1UL << 25);    // bus off
 
@@ -459,12 +460,18 @@ static irqreturn_t tcan4450_handleInterrupts(int irq, void *dev)
 
     if(ir & BO)
     {
-
+        // stats->bus_off++;
+		can_bus_off(dev);
     }
 
     if(ir & EW)
     {
-
+        //stats->error_warning++;
+    }
+    
+    if(ir & EP)
+    {
+        //stats->error_passive++;
     }
 
     mutex_unlock(&priv->spi_lock);
@@ -476,7 +483,7 @@ static int tcan4550_setupInterrupts(struct net_device *dev)
 {
     int err;
 
-    spi_write32(IE, RF0N + TFE + BO + EW);  // rx fifo 0 new message + tx fifo empty + bus off + warning
+    spi_write32(IE, RF0N + TFE + BO + EW + EP);  // rx fifo 0 new message + tx fifo empty + bus off + warning + error passive
 
     spi_write32(ILE, 0x1);  // enable interrupt line 1
 
@@ -492,6 +499,7 @@ static int tcan4550_setupInterrupts(struct net_device *dev)
     // interrupt enables
     spi_write32(INTERRUPT_ENABLE, 0);
 
+    // as SPI is slow, run irq in a kernel thread
     err = request_threaded_irq(spi->irq, NULL, tcan4450_handleInterrupts, IRQF_ONESHOT, dev->name, dev);
     if(err)
     {
