@@ -35,5 +35,6 @@ Does not support CAN FD
 Does not support extended frames  
 Does not support remote frames  
 Does not support bus off or bus warning  
+Does not support suspend/resume
 
 

@@ -43,8 +43,8 @@ const static uint32_t INTERRUPT_ENABLE = 0x0830;
 
 const static uint32_t CCCR = 0x1018;
 const static uint32_t NBTP = 0x101C;
-const static uint32_t RXF0S = 0x10A4;
 const static uint32_t RXF0C = 0x10A0;
+const static uint32_t RXF0S = 0x10A4;
 const static uint32_t RXF0A = 0x10A8;
 const static uint32_t TXBC = 0x10C0;
 const static uint32_t TXESC = 0x10C8;
