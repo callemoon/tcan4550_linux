@@ -81,9 +81,6 @@ const static uint32_t RX_FIFO_START_ADDRESS = 0x200;
 
 const static uint32_t MRAM_BASE = 0x8000;
 
-// GPIO
-const static uint32_t GPIO_RESET = 21;  // GPIO pin for chip reset
-
 struct tcan4550_priv
 {
     struct can_priv can;    // must be located first in private struct
@@ -95,6 +92,7 @@ struct tcan4550_priv
 };
 
 static struct spi_device *spi = 0;  // global spi handle
+static struct gpio_desc *reset_gpio;
 
 // tcan function headers
 static int tcan4550_sendMsg(struct canfd_frame *msg, uint32_t *index);
@@ -106,8 +104,7 @@ static bool tcan4550_readIdentification(void);
 static bool tcan4550_setBitRate(uint32_t bitRate);
 static int tcan4550_setupInterrupts(struct net_device *dev);
 static void tcan4550_hwReset(void);
-static void tcan4550_setupIo(void);
-static void tcan4550_freeIo(void);
+void tcan4550_setupIo(struct device *dev);
 static irqreturn_t tcan4450_handleInterrupts(int irq, void *dev);
 
 // spi function headers
@@ -509,29 +506,30 @@ static int tcan4550_setupInterrupts(struct net_device *dev)
     return 0;
 }
 
-void tcan4550_setupIo(void)
+void tcan4550_setupIo(struct device *dev)
 {
-    gpio_request(GPIO_RESET,"GPIO_RESET");
-    gpio_direction_output(GPIO_RESET, 0);
-    gpio_set_value(GPIO_RESET, 0);
-}
+    reset_gpio = devm_gpiod_get_optional(dev, "reset", GPIOD_OUT_LOW);  // get reset gpio from device-tree reset-gpio property, set to output low
+	if (IS_ERR(reset_gpio))
+    {
+        //netdev_err(dev, "could not get reset gpio\n");
 
-void tcan4550_freeIo(void)
-{
-    gpio_free(GPIO_RESET);
+		reset_gpio = NULL;
+    }
 }
 
 void tcan4550_hwReset(void)
 {
-    gpio_set_value(GPIO_RESET, 1);
+    gpiod_set_value(reset_gpio, 1);
     usleep_range(30, 100);  // toggle pin for at least  30us
-    gpio_set_value(GPIO_RESET, 0);
+    gpiod_set_value(reset_gpio, 0);
 
     usleep_range(700, 1000);    // we need to wait at least 700us for chip to become ready
 }
 
 static bool tcan4550_init(struct net_device *dev, uint32_t bitRateReg)
 {
+    tcan4550_setupIo(&spi->dev);
+
     tcan4550_hwReset();
 
     if (!tcan4550_readIdentification())
@@ -569,8 +567,6 @@ static int tcan_open(struct net_device *dev)
     uint32_t bitRateReg = (bt->phase_seg2 - 1) + ((bt->prop_seg + bt->phase_seg1 - 1) << 8) + ((bt->brp - 1) << 16) + ((bt->sjw - 1) << 25);
     int err;
 
-    tcan4550_setupIo();
-
     /* open the can device */
     err = open_candev(dev);
     if (err)
@@ -601,8 +597,6 @@ static int tcan_close(struct net_device *dev)
     close_candev(dev);
 
     free_irq(spi->irq, dev);
-
-    tcan4550_freeIo();
 
     return 0;
 }
