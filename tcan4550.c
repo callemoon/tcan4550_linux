@@ -511,7 +511,7 @@ void tcan4550_setupIo(struct device *dev)
     reset_gpio = devm_gpiod_get_optional(dev, "reset", GPIOD_OUT_LOW);  // get reset gpio from device-tree reset-gpio property, set to output low
 	if (IS_ERR(reset_gpio))
     {
-        //netdev_err(dev, "could not get reset gpio\n");
+        dev_err(dev, "could not get reset gpio\n");
 
 		reset_gpio = NULL;
     }
