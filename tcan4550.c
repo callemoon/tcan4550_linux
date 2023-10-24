@@ -530,15 +530,16 @@ void tcan4550_hwReset(void)
 
 static bool tcan4550_init(struct net_device *dev, uint32_t bitRateReg)
 {
-    tcan4550_setupIo(&spi->dev);
-
     tcan4550_hwReset();
 
     if (!tcan4550_readIdentification())
     {
-        netdev_err(dev, "failed to read TCAN4550 identification\n");
+	if (!tcan4550_readIdentification())
+	{
+	        netdev_err(dev, "failed to read TCAN4550 identification\n");
 
-        return false;
+	        return false;
+	}
     }
 
     tcan4550_set_standby_mode();
@@ -569,6 +570,8 @@ static int tcan_open(struct net_device *dev)
     uint32_t bitRateReg = (bt->phase_seg2 - 1) + ((bt->prop_seg + bt->phase_seg1 - 1) << 8) + ((bt->brp - 1) << 16) + ((bt->sjw - 1) << 25);
     int err;
 
+    mutex_init(&priv->spi_lock);
+
     /* open the can device */
     err = open_candev(dev);
     if (err)
@@ -582,8 +585,6 @@ static int tcan_open(struct net_device *dev)
         netdev_err(dev, "failed to init tcan\n");
         return -1;
     }
-
-    mutex_init(&priv->spi_lock);
 
     netif_start_queue(dev);
 
@@ -706,6 +707,8 @@ static int tcan_probe(struct spi_device *_spi)
         goto exit_free;
     }
 
+    tcan4550_setupIo(&spi->dev);
+
     return 0;
 
 exit_free:
@@ -727,7 +730,7 @@ int tcan_remove(struct spi_device *spi)
 
 static const struct of_device_id tcan4550_of_match[] = {
     {
-        .compatible = "ti,tcan4550",
+        .compatible = "ti,tcan4x5x",
         .data = (void *)4550,
     },
     {}};
@@ -743,7 +746,7 @@ MODULE_DEVICE_TABLE(spi, tcan4550_id_table);
 
 static struct spi_driver tcan4550_can_driver = {
     .driver = {
-        .name = "tcan4550",
+        .name = "tcan4x5x",
         .of_match_table = tcan4550_of_match,
         .pm = NULL,
     },
