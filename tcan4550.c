@@ -362,6 +362,42 @@ static int tcan4550_sendMsg(struct canfd_frame *msg, uint32_t *index)
     return freeBuffers;
 }
 
+static void tcan4550_tx_work_handler(struct work_struct *ws)
+{
+	struct tcan4550_priv *priv = container_of(ws, struct tcan4550_priv,
+						 tx_work);
+	struct spi_device *spi = priv->spi;
+	struct net_device *net = priv->ndev;
+	struct can_frame *frame;
+    struct canfd_frame msg;
+
+    uint32_t index;
+
+	mutex_lock(&priv->spi_lock);
+	if (priv->tx_skb) {
+        frame = (struct can_frame *)priv->tx_skb->data;
+
+        if (frame->len > 8)
+            frame->len = 8;
+
+        msg.len = frame->len;
+        msg.can_id = frame->can_id;
+        msg.data[0] = frame->data[0];
+        msg.data[1] = frame->data[1];
+        msg.data[2] = frame->data[2];
+        msg.data[3] = frame->data[3];
+        msg.data[4] = frame->data[4];
+        msg.data[5] = frame->data[5];
+        msg.data[6] = frame->data[6];
+        msg.data[7] = frame->data[7];
+
+        tcan4550_sendMsg(&msg, &index);
+        can_put_echo_skb(priv->tx_skb, net, 0, 0);
+        priv->tx_skb = NULL;
+	}
+	mutex_unlock(&priv->spi_lock);
+}
+
 bool tcan4550_recMsg(struct canfd_frame *msg)
 {
 	uint32_t rxf0s = spi_read32(RXF0S);
@@ -457,7 +493,8 @@ static irqreturn_t tcan4450_handleInterrupts(int irq, void *dev)
     // Tx fifo empty
     if(ir & TFE)
     {
-       // can_free_echo_skb(dev, 0, 0);
+        can_get_echo_skb(dev, 0, 0);
+        can_free_echo_skb(dev, 0, 0);
 
 //        if(netif_tx_queue_stopped(dev))
         {
@@ -615,12 +652,7 @@ static int tcan_close(struct net_device *dev)
 static netdev_tx_t t_can_start_xmit(struct sk_buff *skb,
                                     struct net_device *dev)
 {
-    //struct net_device_stats *stats = &dev->stats;
-    //struct can_frame *frame = (struct can_frame *)skb->data;
-    //struct canfd_frame msg;
-    //uint32_t index;
     struct tcan4550_priv *priv;
-
     priv = netdev_priv(dev);   // get the private
 
 
@@ -635,83 +667,7 @@ static netdev_tx_t t_can_start_xmit(struct sk_buff *skb,
     priv->tx_skb = skb;
 	queue_work(priv->wq, &priv->tx_work);
 
-    /*
-    msg.len = frame->len;
-    msg.can_id = frame->can_id;
-    msg.data[0] = frame->data[0];
-    msg.data[1] = frame->data[1];
-    msg.data[2] = frame->data[2];
-    msg.data[3] = frame->data[3];
-    msg.data[4] = frame->data[4];
-    msg.data[5] = frame->data[5];
-    msg.data[6] = frame->data[6];
-    msg.data[7] = frame->data[7];
-
-    mutex_lock(&priv->spi_lock);
-
-    // If sending is ok, also copy to echo buffer
-    if(tcan4550_sendMsg(&msg, &index))  
-    {
-        can_put_echo_skb(skb, dev, index, 0);
-        can_free_echo_skb(dev, 0, 0);
-
-        stats->tx_packets++;
-        stats->tx_bytes+=msg.len;
-    }
-    else
-    {
-        netif_stop_queue(dev);  // queue will wake up when FIFO is empty.
-
-        mutex_unlock(&priv->spi_lock);
-
-        return NETDEV_TX_BUSY;
-    }
-    mutex_unlock(&priv->spi_lock);
-   */
-
     return NETDEV_TX_OK;
-}
-
-static void tcan4550_tx_work_handler(struct work_struct *ws)
-{
-	struct tcan4550_priv *priv = container_of(ws, struct tcan4550_priv,
-						 tx_work);
-	struct spi_device *spi = priv->spi;
-	struct net_device *net = priv->ndev;
-	struct can_frame *frame;
-    struct canfd_frame msg;
-
-    uint32_t index;
-
-	mutex_lock(&priv->spi_lock);
-	if (priv->tx_skb) {
-		//if (priv->can.state == CAN_STATE_BUS_OFF) {
-		//	mcp251x_clean(net);
-		//} else {
-			frame = (struct can_frame *)priv->tx_skb->data;
-
-			if (frame->len > 8)
-				frame->len = 8;
-
-            msg.len = frame->len;
-            msg.can_id = frame->can_id;
-            msg.data[0] = frame->data[0];
-            msg.data[1] = frame->data[1];
-            msg.data[2] = frame->data[2];
-            msg.data[3] = frame->data[3];
-            msg.data[4] = frame->data[4];
-            msg.data[5] = frame->data[5];
-            msg.data[6] = frame->data[6];
-            msg.data[7] = frame->data[7];
-
-            tcan4550_sendMsg(&msg, &index);
-			//mcp251x_hw_tx(spi, frame, 0);
-			//priv->tx_busy = true;
-			can_put_echo_skb(priv->tx_skb, net, 0, 0);
-			priv->tx_skb = NULL;
-		//}
-	}
-	mutex_unlock(&priv->spi_lock);
 }
 
 static const struct net_device_ops m_can_netdev_ops = {
