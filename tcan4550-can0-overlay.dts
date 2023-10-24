@@ -49,6 +49,7 @@
                 spi-max-frequency = <18000000>;
                 interrupt-parent = <&gpio>;
                 interrupts = <25 0x8>; /* active low */
+                reset-gpios = <&gpio 21 0>; /* active high */
             };
         };
     };
