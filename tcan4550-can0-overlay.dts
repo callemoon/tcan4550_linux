@@ -41,9 +41,9 @@
             /* needed to avoid dtc warning */
             #address-cells = <1>;
             #size-cells = <0>;
-            can0: tcan4550@0 {
+            can0: tcan4x5x@0 {
                 reg = <0>;
-                compatible = "ti,tcan4550";
+                compatible = "ti,tcan4x5x";
                 pinctrl-names = "default";
                 pinctrl-0 = <&can_int_pins>;
                 spi-max-frequency = <18000000>;

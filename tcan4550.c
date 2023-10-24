@@ -679,6 +679,11 @@ static int tcan_probe(struct spi_device *_spi)
     struct net_device *ndev;
     int err;
     struct tcan4550_priv *priv;
+    struct spi_delay delay =
+    {
+        .unit = SPI_DELAY_UNIT_USECS,
+        .value = 0
+    };
 
     spi = _spi; // store spi handle
 
@@ -703,10 +708,10 @@ static int tcan_probe(struct spi_device *_spi)
 
     spi->bits_per_word = 8;
     spi->max_speed_hz = 18000000;
-    spi->cs_setup = 0;
-    spi->cs_hold = 0;
-    spi->cs_inactive = 0;
-    spi->word_delay = 0;
+    spi->cs_setup = delay;
+    spi->cs_hold = delay;
+    spi->cs_inactive = delay;
+    spi->word_delay = delay;
 
     err = spi_setup(spi);
     if (err)
