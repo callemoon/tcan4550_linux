@@ -98,7 +98,7 @@ static struct spi_device *spi = 0; // global spi handle
 static struct gpio_desc *reset_gpio;
 
 // tcan function headers
-static int tcan4550_sendMsg(struct canfd_frame *msg, uint32_t *index);
+static int tcan4550_sendMsg(struct canfd_frame *msg, uint32_t *index, bool extended, bool rtr);
 static void tcan4550_set_normal_mode(void);
 static void tcan4550_set_standby_mode(void);
 static void tcan4550_configure_mram(void);
@@ -334,7 +334,7 @@ static void tcan4550_unlock()
     spi_write32(CCCR, val);
 }
 
-static int tcan4550_sendMsg(struct canfd_frame *msg, uint32_t *index)
+static int tcan4550_sendMsg(struct canfd_frame *msg, uint32_t *index, bool extended, bool rtr)
 {
     // check for free buffers
     uint32_t txqfs = spi_read32(TXQFS);
@@ -346,7 +346,17 @@ static int tcan4550_sendMsg(struct canfd_frame *msg, uint32_t *index)
         uint32_t baseAddress = MRAM_BASE + TX_FIFO_START_ADDRESS + (writeIndex * TX_SLOT_SIZE);
         uint32_t buffer[4];
 
-        buffer[0] = (msg->can_id << 18);
+        if(extended)
+        {
+            buffer[0] = (msg->can_id);
+        }
+        else
+        {
+            buffer[0] = (msg->can_id << 18);
+        }
+
+        buffer[0] += (rtr << 29) + (extended << 30);    // add extended and rtr flags
+
         buffer[1] = (msg->len << 16);
         buffer[2] = msg->data[0] + (msg->data[1] << 8) + (msg->data[2] << 16) + (msg->data[3] << 24);
         buffer[3] = msg->data[4] + (msg->data[5] << 8) + (msg->data[6] << 16) + (msg->data[7] << 24);
@@ -373,13 +383,35 @@ static void tcan4550_tx_work_handler(struct work_struct *ws)
     mutex_lock(&priv->spi_lock);
     if (priv->tx_skb)
     {
+        bool rtr = false;
+        bool extended = false;
+
         frame = (struct can_frame *)priv->tx_skb->data;
 
         if (frame->len > 8)
+        {
             frame->len = 8;
+        }
+
+        if(frame->can_id & CAN_EFF_FLAG)
+        {
+            extended = true;
+        }
+
+        if(frame->can_id & CAN_RTR_FLAG)
+        {
+            rtr = true;
+        }
 
         msg.len = frame->len;
-        msg.can_id = frame->can_id;
+        if(extended)
+        {
+            msg.can_id = frame->can_id & CAN_EFF_MASK;
+        }
+        else
+        {
+           msg.can_id = frame->can_id & CAN_SFF_MASK; 
+        }
         msg.data[0] = frame->data[0];
         msg.data[1] = frame->data[1];
         msg.data[2] = frame->data[2];
@@ -389,7 +421,7 @@ static void tcan4550_tx_work_handler(struct work_struct *ws)
         msg.data[6] = frame->data[6];
         msg.data[7] = frame->data[7];
 
-        tcan4550_sendMsg(&msg, &index);
+        tcan4550_sendMsg(&msg, &index, extended, rtr);
         can_put_echo_skb(priv->tx_skb, net, 0, 0);
         priv->tx_skb = NULL;
     }
@@ -413,7 +445,20 @@ bool tcan4550_recMsg(struct canfd_frame *msg)
 
         spi_write32(RXF0A, getIndex); // acknowledge that we have read the message
 
-        msg->can_id = data[0] >> 18;
+        if(data[0] & (1 << 30)) // extended
+        {
+            msg->can_id = (data[0] & CAN_EFF_MASK) | CAN_EFF_FLAG;
+        }
+        else
+        {
+           msg->can_id = (data[0] >> 18) & CAN_SFF_MASK; 
+        }
+
+        if(data[0] & (1 << 29)) // rtr
+        {
+           msg->can_id |= CAN_RTR_FLAG;
+        }
+
         msg->len = (data[1] >> 16) & 0x7F;
 
         msg->data[0] = data[2] & 0xFF;
@@ -744,7 +789,7 @@ exit_free:
     return err;
 }
 
-int tcan_remove(struct spi_device *spi)
+void tcan_remove(struct spi_device *spi)
 {
     struct net_device *ndev = spi_get_drvdata(spi);
 
@@ -752,7 +797,7 @@ int tcan_remove(struct spi_device *spi)
 
     free_candev(ndev);
 
-    return 0;
+//    return 0;
 }
 
 static const struct of_device_id tcan4550_of_match[] = {
