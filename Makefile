@@ -5,7 +5,7 @@
 
 obj-m += tcan4550.o
 
-KDIR = /lib/modules/$(shell uname -r)/build
+KDIR = /opt/cclinux/3.2/sysroots/cortexa35-poky-linux/lib/modules/5.15.32-lts-next+g66633302ecf8/build
 
 all:
 	make -C $(KDIR)  M=$(shell pwd) modules

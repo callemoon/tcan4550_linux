@@ -301,8 +301,10 @@ static bool tcan4550_setBitRate(uint32_t bitRate)
 
 static void tcan4550_configure_mram()
 {
+    uint32_t i;
+
     // clear MRAM to avoid risk of ECC errors 2kB = 512 words
-    for (uint32_t i = 0; i < 512; i++)
+    for (i = 0; i < 512; i++)
     {
         spi_write32(MRAM_BASE + (i * 4), 0);
     }
@@ -619,10 +621,10 @@ static netdev_tx_t t_can_start_xmit(struct sk_buff *skb,
     priv = netdev_priv(dev);   // get the private
 
     // drop invalid can msgs
-    if (can_dev_dropped_skb(dev, skb))
-    {
-        return NETDEV_TX_OK;
-    }
+    //if (can_dev_dropped_skb(dev, skb))
+    //{
+    //    return NETDEV_TX_OK;
+    //}
 
     msg.len = frame->len;
     msg.can_id = frame->can_id;
@@ -718,13 +720,15 @@ exit_free:
     return err;
 }
 
-void tcan_remove(struct spi_device *spi)
+int tcan_remove(struct spi_device *spi)
 {
     struct net_device *ndev = spi_get_drvdata(spi);
 
     unregister_candev(ndev);
 
     free_candev(ndev);
+
+    return 0;
 }
 
 static const struct of_device_id tcan4550_of_match[] = {
@@ -737,7 +741,7 @@ MODULE_DEVICE_TABLE(of, tcan4550_of_match);
 
 static const struct spi_device_id tcan4550_id_table[] = {
     {
-        .name = "tcan4550",
+        .name = "tcan4x5x",
         .driver_data = (kernel_ulong_t)4550,
     },
     {}};
