@@ -26,7 +26,7 @@
 
 #include <linux/interrupt.h>
 
-#include <linux/gpio.h> 
+#include <linux/gpio.h>
 
 #include "tcan4550.h"
 
@@ -56,20 +56,19 @@ const static uint32_t IR = 0x1050;  // interrupt register
 const static uint32_t IE = 0x1054;  // interrupt enable
 const static uint32_t ILE = 0x105C; // interrupt line enable
 
-const static uint32_t RF0N = (0x1UL << 0);   // rx fifo 0 new data
-const static uint32_t TC = (0x1UL << 9);  // transmission complete
-const static uint32_t TFE = (0x1UL << 11);    // transmit fifo empty
-const static uint32_t EP = (0x1UL << 23);    // error passive
-const static uint32_t EW = (0x1UL << 24);    // error warning
-const static uint32_t BO = (0x1UL << 25);    // bus off
+const static uint32_t RF0N = (0x1UL << 0); // rx fifo 0 new data
+const static uint32_t TC = (0x1UL << 9);   // transmission complete
+const static uint32_t TFE = (0x1UL << 11); // transmit fifo empty
+const static uint32_t EP = (0x1UL << 23);  // error passive
+const static uint32_t EW = (0x1UL << 24);  // error warning
+const static uint32_t BO = (0x1UL << 25);  // bus off
 
-const static uint32_t INIT = 0x1;   // init
-const static uint32_t CCE = 0x2;    // configuration change enable
-const static uint32_t CSR = 0x10;   // clock stop request
+const static uint32_t INIT = 0x1; // init
+const static uint32_t CCE = 0x2;  // configuration change enable
+const static uint32_t CSR = 0x10; // clock stop request
 
 const static uint32_t MODESEL_1 = 0x40;
 const static uint32_t MODESEL_2 = 0x80;
-
 
 // MRAM config
 const static uint32_t RX_SLOT_SIZE = 16;
@@ -83,7 +82,7 @@ const static uint32_t MRAM_BASE = 0x8000;
 
 struct tcan4550_priv
 {
-    struct can_priv can;    // must be located first in private struct
+    struct can_priv can; // must be located first in private struct
     struct device *dev;
     struct net_device *ndev;
     struct spi_device *spi;
@@ -91,11 +90,11 @@ struct tcan4550_priv
     struct mutex spi_lock; /* SPI device lock */
 
     struct workqueue_struct *wq;
-	struct work_struct tx_work;
+    struct work_struct tx_work;
     struct sk_buff *tx_skb;
 };
 
-static struct spi_device *spi = 0;  // global spi handle
+static struct spi_device *spi = 0; // global spi handle
 static struct gpio_desc *reset_gpio;
 
 // tcan function headers
@@ -119,8 +118,6 @@ static int spi_write32(uint32_t address, uint32_t data);
 static int spi_read128(uint32_t address, uint32_t data[4]);
 static int spi_write128(uint32_t address, uint32_t data[4]);
 
-
-
 static const struct can_bittiming_const tcan_bittiming_const = {
     .name = KBUILD_MODNAME,
     .tseg1_min = 1,
@@ -135,8 +132,8 @@ static const struct can_bittiming_const tcan_bittiming_const = {
 
 static int tcan4550_spi_trans(int len, unsigned char *rxBuf, unsigned char *txBuf)
 {
-//    struct tcan4550_priv *priv;
-//    priv = spi_get_drvdata(spi);
+    //    struct tcan4550_priv *priv;
+    //    priv = spi_get_drvdata(spi);
     struct spi_transfer t = {
         .tx_buf = txBuf,
         .rx_buf = rxBuf,
@@ -331,7 +328,7 @@ static void tcan4550_unlock()
 {
     uint32_t val = spi_read32(CCCR);
 
-    val |= (CCE + INIT);		  // set CCE and INIT bits
+    val |= (CCE + INIT);     // set CCE and INIT bits
     val &= ~((uint32_t)CSR); // clear CSR
 
     spi_write32(CCCR, val);
@@ -354,7 +351,7 @@ static int tcan4550_sendMsg(struct canfd_frame *msg, uint32_t *index)
         buffer[2] = msg->data[0] + (msg->data[1] << 8) + (msg->data[2] << 16) + (msg->data[3] << 24);
         buffer[3] = msg->data[4] + (msg->data[5] << 8) + (msg->data[6] << 16) + (msg->data[7] << 24);
 
-        spi_write128(baseAddress, buffer);  // write message id,len and data
+        spi_write128(baseAddress, buffer); // write message id,len and data
 
         spi_write32(TXBAR, (1 << writeIndex)); // request buffer transmission
     }
@@ -364,17 +361,18 @@ static int tcan4550_sendMsg(struct canfd_frame *msg, uint32_t *index)
 
 static void tcan4550_tx_work_handler(struct work_struct *ws)
 {
-	struct tcan4550_priv *priv = container_of(ws, struct tcan4550_priv,
-						 tx_work);
-	struct spi_device *spi = priv->spi;
-	struct net_device *net = priv->ndev;
-	struct can_frame *frame;
+    struct tcan4550_priv *priv = container_of(ws, struct tcan4550_priv,
+                                              tx_work);
+    struct spi_device *spi = priv->spi;
+    struct net_device *net = priv->ndev;
+    struct can_frame *frame;
     struct canfd_frame msg;
 
     uint32_t index;
 
-	mutex_lock(&priv->spi_lock);
-	if (priv->tx_skb) {
+    mutex_lock(&priv->spi_lock);
+    if (priv->tx_skb)
+    {
         frame = (struct can_frame *)priv->tx_skb->data;
 
         if (frame->len > 8)
@@ -394,43 +392,43 @@ static void tcan4550_tx_work_handler(struct work_struct *ws)
         tcan4550_sendMsg(&msg, &index);
         can_put_echo_skb(priv->tx_skb, net, 0, 0);
         priv->tx_skb = NULL;
-	}
-	mutex_unlock(&priv->spi_lock);
+    }
+    mutex_unlock(&priv->spi_lock);
 }
 
 bool tcan4550_recMsg(struct canfd_frame *msg)
 {
-	uint32_t rxf0s = spi_read32(RXF0S);
+    uint32_t rxf0s = spi_read32(RXF0S);
 
-	uint32_t fillLevel = rxf0s & 0xFF;
-	uint32_t getIndex = (rxf0s >> 8) & 0xFF;
-	//uint32_t putIndex = (rxf0s >> 16) & 0xFF;
+    uint32_t fillLevel = rxf0s & 0xFF;
+    uint32_t getIndex = (rxf0s >> 8) & 0xFF;
+    // uint32_t putIndex = (rxf0s >> 16) & 0xFF;
 
-	if(fillLevel > 0)
-	{
-		uint32_t data[4];
-		uint32_t baseAddress = MRAM_BASE + RX_FIFO_START_ADDRESS + (getIndex * RX_SLOT_SIZE);
+    if (fillLevel > 0)
+    {
+        uint32_t data[4];
+        uint32_t baseAddress = MRAM_BASE + RX_FIFO_START_ADDRESS + (getIndex * RX_SLOT_SIZE);
 
-		spi_read128(baseAddress, data);
+        spi_read128(baseAddress, data);
 
-		spi_write32(RXF0A, getIndex);	// acknowledge that we have read the message
+        spi_write32(RXF0A, getIndex); // acknowledge that we have read the message
 
-		msg->can_id = data[0] >> 18;
-		msg->len = (data[1] >> 16) & 0x7F;
+        msg->can_id = data[0] >> 18;
+        msg->len = (data[1] >> 16) & 0x7F;
 
-		msg->data[0] = data[2] & 0xFF;
-		msg->data[1] = (data[2] >> 8) & 0xFF;
-		msg->data[2] = (data[2] >> 16) & 0xFF;
-		msg->data[3] = (data[2] >> 24) & 0xFF;
-		msg->data[4] = data[3] & 0xFF;
-		msg->data[5] = (data[3] >> 8) & 0xFF;
-		msg->data[6] = (data[3] >> 16) & 0xFF;
-		msg->data[7] = (data[3] >> 24) & 0xFF;
+        msg->data[0] = data[2] & 0xFF;
+        msg->data[1] = (data[2] >> 8) & 0xFF;
+        msg->data[2] = (data[2] >> 16) & 0xFF;
+        msg->data[3] = (data[2] >> 24) & 0xFF;
+        msg->data[4] = data[3] & 0xFF;
+        msg->data[5] = (data[3] >> 8) & 0xFF;
+        msg->data[6] = (data[3] >> 16) & 0xFF;
+        msg->data[7] = (data[3] >> 24) & 0xFF;
 
-		return true;
-	}
+        return true;
+    }
 
-	return false;
+    return false;
 }
 
 static irqreturn_t tcan4450_handleInterrupts(int irq, void *dev)
@@ -438,35 +436,35 @@ static irqreturn_t tcan4450_handleInterrupts(int irq, void *dev)
     struct tcan4550_priv *priv = netdev_priv(dev);
     struct net_device_stats *stats = &((struct net_device *)dev)->stats;
     uint32_t ir;
-   
+
     mutex_lock(&priv->spi_lock);
 
     ir = spi_read32(IR);
-    spi_write32(IR, ir);    // acknowledge interrupts
+    spi_write32(IR, ir); // acknowledge interrupts
 
-//    if(ir == 0)
-//    {
-//        return IRQ_NONE;
-//    }
+    //    if(ir == 0)
+    //    {
+    //        return IRQ_NONE;
+    //    }
 
-    //spi_write32(STATUS, 0xFFFFFFFF);
-    //spi_write32(INTERRUPT_FLAGS, 0xFFFFFFFF);
+    // spi_write32(STATUS, 0xFFFFFFFF);
+    // spi_write32(INTERRUPT_FLAGS, 0xFFFFFFFF);
 
     // rx fifo 0 new message
-    if(ir & RF0N)
+    if (ir & RF0N)
     {
         struct canfd_frame msg;
         struct sk_buff *skb;
         struct canfd_frame *cf;
 
-        if(tcan4550_recMsg(&msg))
+        if (tcan4550_recMsg(&msg))
         {
             // no need to keep mutex during this phase
             mutex_unlock(&priv->spi_lock);
 
             skb = alloc_can_skb(dev, (struct can_frame **)&cf);
 
-            if(skb)
+            if (skb)
             {
                 cf->len = msg.len;
                 cf->can_id = msg.can_id;
@@ -483,7 +481,7 @@ static irqreturn_t tcan4450_handleInterrupts(int irq, void *dev)
                 netif_rx(skb);
 
                 stats->rx_packets++;
-                stats->rx_bytes+=msg.len;
+                stats->rx_bytes += msg.len;
             }
 
             mutex_lock(&priv->spi_lock);
@@ -491,31 +489,31 @@ static irqreturn_t tcan4450_handleInterrupts(int irq, void *dev)
     }
 
     // Tx fifo empty
-    if(ir & TFE)
+    if (ir & TFE)
     {
         can_get_echo_skb(dev, 0, 0);
         can_free_echo_skb(dev, 0, 0);
 
-//        if(netif_tx_queue_stopped(dev))
+        //        if(netif_tx_queue_stopped(dev))
         {
             netif_wake_queue(dev);
         }
     }
 
-    if(ir & BO)
+    if (ir & BO)
     {
         // stats->bus_off++;
-		can_bus_off(dev);
+        can_bus_off(dev);
     }
 
-    if(ir & EW)
+    if (ir & EW)
     {
-        //stats->error_warning++;
+        // stats->error_warning++;
     }
-    
-    if(ir & EP)
+
+    if (ir & EP)
     {
-        //stats->error_passive++;
+        // stats->error_passive++;
     }
 
     mutex_unlock(&priv->spi_lock);
@@ -527,9 +525,9 @@ static int tcan4550_setupInterrupts(struct net_device *dev)
 {
     int err;
 
-    spi_write32(IE, RF0N + TFE + BO + EW + EP);  // rx fifo 0 new message + tx fifo empty + bus off + warning + error passive
+    spi_write32(IE, RF0N + TFE + BO + EW + EP); // rx fifo 0 new message + tx fifo empty + bus off + warning + error passive
 
-    spi_write32(ILE, 0x1);  // enable interrupt line 1
+    spi_write32(ILE, 0x1); // enable interrupt line 1
 
     // mask all spi errors
     spi_write32(SPI_MASK, 0xFFFFFFFF);
@@ -545,7 +543,7 @@ static int tcan4550_setupInterrupts(struct net_device *dev)
 
     // as SPI is slow, run irq in a kernel thread
     err = request_threaded_irq(spi->irq, NULL, tcan4450_handleInterrupts, IRQF_ONESHOT, dev->name, dev);
-    if(err)
+    if (err)
     {
         return err;
     }
@@ -555,22 +553,22 @@ static int tcan4550_setupInterrupts(struct net_device *dev)
 
 void tcan4550_setupIo(struct device *dev)
 {
-    reset_gpio = devm_gpiod_get_optional(dev, "reset", GPIOD_OUT_LOW);  // get reset gpio from device-tree reset-gpio property, set to output low
-	if (IS_ERR(reset_gpio))
+    reset_gpio = devm_gpiod_get_optional(dev, "reset", GPIOD_OUT_LOW); // get reset gpio from device-tree reset-gpio property, set to output low
+    if (IS_ERR(reset_gpio))
     {
         dev_err(dev, "could not get reset gpio\n");
 
-		reset_gpio = NULL;
+        reset_gpio = NULL;
     }
 }
 
 void tcan4550_hwReset(void)
 {
     gpiod_set_value(reset_gpio, 1);
-    usleep_range(30, 100);  // toggle pin for at least  30us
+    usleep_range(30, 100); // toggle pin for at least  30us
     gpiod_set_value(reset_gpio, 0);
 
-    usleep_range(700, 1000);    // we need to wait at least 700us for chip to become ready
+    usleep_range(700, 1000); // we need to wait at least 700us for chip to become ready
 }
 
 static bool tcan4550_init(struct net_device *dev, uint32_t bitRateReg)
@@ -579,23 +577,23 @@ static bool tcan4550_init(struct net_device *dev, uint32_t bitRateReg)
 
     if (!tcan4550_readIdentification())
     {
-	if (!tcan4550_readIdentification())
-	{
-	        netdev_err(dev, "failed to read TCAN4550 identification\n");
+        if (!tcan4550_readIdentification())
+        {
+            netdev_err(dev, "failed to read TCAN4550 identification\n");
 
-	        return false;
-	}
+            return false;
+        }
     }
 
     tcan4550_set_standby_mode();
     tcan4550_unlock();
     tcan4550_setBitRate(bitRateReg);
     tcan4550_configure_mram();
-    
-    if(tcan4550_setupInterrupts(dev))
+
+    if (tcan4550_setupInterrupts(dev))
     {
         netdev_err(dev, "failed to register interrupt\n");
-        
+
         return false;
     }
 
@@ -625,7 +623,7 @@ static int tcan_open(struct net_device *dev)
         return err;
     }
 
-    if(!tcan4550_init(dev, bitRateReg))
+    if (!tcan4550_init(dev, bitRateReg))
     {
         netdev_err(dev, "failed to init tcan\n");
         return -1;
@@ -638,7 +636,7 @@ static int tcan_open(struct net_device *dev)
 
 static int tcan_close(struct net_device *dev)
 {
-//    struct tcan4550_priv *priv = netdev_priv(dev);
+    //    struct tcan4550_priv *priv = netdev_priv(dev);
 
     netif_stop_queue(dev);
 
@@ -653,8 +651,7 @@ static netdev_tx_t t_can_start_xmit(struct sk_buff *skb,
                                     struct net_device *dev)
 {
     struct tcan4550_priv *priv;
-    priv = netdev_priv(dev);   // get the private
-
+    priv = netdev_priv(dev); // get the private
 
     // drop invalid can msgs
     if (can_dropped_invalid_skb(dev, skb))
@@ -665,7 +662,7 @@ static netdev_tx_t t_can_start_xmit(struct sk_buff *skb,
     netif_stop_queue(dev);
 
     priv->tx_skb = skb;
-	queue_work(priv->wq, &priv->tx_work);
+    queue_work(priv->wq, &priv->tx_work);
 
     return NETDEV_TX_OK;
 }
@@ -691,7 +688,7 @@ static int tcan_probe(struct spi_device *_spi)
         return -ENOMEM;
     }
 
-    priv = netdev_priv(ndev);   // get the private
+    priv = netdev_priv(ndev); // get the private
     spi_set_drvdata(spi, ndev);
     SET_NETDEV_DEV(ndev, &spi->dev);
 
@@ -723,11 +720,12 @@ static int tcan_probe(struct spi_device *_spi)
     tcan4550_setupIo(&spi->dev);
 
     priv->wq = alloc_workqueue("tcan4550_wq", WQ_FREEZABLE | WQ_MEM_RECLAIM, 0);
-	if (!priv->wq) {
-		err = -ENOMEM;
-		goto exit_free;
-	}
-	INIT_WORK(&priv->tx_work, tcan4550_tx_work_handler);
+    if (!priv->wq)
+    {
+        err = -ENOMEM;
+        goto exit_free;
+    }
+    INIT_WORK(&priv->tx_work, tcan4550_tx_work_handler);
 
     return 0;
 
