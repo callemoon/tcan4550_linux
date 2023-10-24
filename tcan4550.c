@@ -89,6 +89,10 @@ struct tcan4550_priv
     struct spi_device *spi;
 
     struct mutex spi_lock; /* SPI device lock */
+
+    struct workqueue_struct *wq;
+	struct work_struct tx_work;
+    struct sk_buff *tx_skb;
 };
 
 static struct spi_device *spi = 0;  // global spi handle
@@ -107,11 +111,15 @@ static void tcan4550_hwReset(void);
 void tcan4550_setupIo(struct device *dev);
 static irqreturn_t tcan4450_handleInterrupts(int irq, void *dev);
 
+static void tcan4550_tx_work_handler(struct work_struct *ws);
+
 // spi function headers
 static uint32_t spi_read32(uint32_t address);
 static int spi_write32(uint32_t address, uint32_t data);
 static int spi_read128(uint32_t address, uint32_t data[4]);
 static int spi_write128(uint32_t address, uint32_t data[4]);
+
+
 
 static const struct can_bittiming_const tcan_bittiming_const = {
     .name = KBUILD_MODNAME,
@@ -607,10 +615,10 @@ static int tcan_close(struct net_device *dev)
 static netdev_tx_t t_can_start_xmit(struct sk_buff *skb,
                                     struct net_device *dev)
 {
-    struct net_device_stats *stats = &dev->stats;
-    struct can_frame *frame = (struct can_frame *)skb->data;
-    struct canfd_frame msg;
-    uint32_t index;
+    //struct net_device_stats *stats = &dev->stats;
+    //struct can_frame *frame = (struct can_frame *)skb->data;
+    //struct canfd_frame msg;
+    //uint32_t index;
     struct tcan4550_priv *priv;
 
     priv = netdev_priv(dev);   // get the private
@@ -622,6 +630,12 @@ static netdev_tx_t t_can_start_xmit(struct sk_buff *skb,
         return NETDEV_TX_OK;
     }
 
+    netif_stop_queue(dev);
+
+    priv->tx_skb = skb;
+	queue_work(priv->wq, &priv->tx_work);
+
+    /*
     msg.len = frame->len;
     msg.can_id = frame->can_id;
     msg.data[0] = frame->data[0];
@@ -652,10 +666,52 @@ static netdev_tx_t t_can_start_xmit(struct sk_buff *skb,
 
         return NETDEV_TX_BUSY;
     }
-
     mutex_unlock(&priv->spi_lock);
+   */
 
     return NETDEV_TX_OK;
+}
+
+static void tcan4550_tx_work_handler(struct work_struct *ws)
+{
+	struct tcan4550_priv *priv = container_of(ws, struct tcan4550_priv,
+						 tx_work);
+	struct spi_device *spi = priv->spi;
+	struct net_device *net = priv->ndev;
+	struct can_frame *frame;
+    struct canfd_frame msg;
+
+    uint32_t index;
+
+	mutex_lock(&priv->spi_lock);
+	if (priv->tx_skb) {
+		//if (priv->can.state == CAN_STATE_BUS_OFF) {
+		//	mcp251x_clean(net);
+		//} else {
+			frame = (struct can_frame *)priv->tx_skb->data;
+
+			if (frame->len > 8)
+				frame->len = 8;
+
+            msg.len = frame->len;
+            msg.can_id = frame->can_id;
+            msg.data[0] = frame->data[0];
+            msg.data[1] = frame->data[1];
+            msg.data[2] = frame->data[2];
+            msg.data[3] = frame->data[3];
+            msg.data[4] = frame->data[4];
+            msg.data[5] = frame->data[5];
+            msg.data[6] = frame->data[6];
+            msg.data[7] = frame->data[7];
+
+            tcan4550_sendMsg(&msg, &index);
+			//mcp251x_hw_tx(spi, frame, 0);
+			//priv->tx_busy = true;
+			can_put_echo_skb(priv->tx_skb, net, 0, 0);
+			priv->tx_skb = NULL;
+		//}
+	}
+	mutex_unlock(&priv->spi_lock);
 }
 
 static const struct net_device_ops m_can_netdev_ops = {
@@ -709,6 +765,13 @@ static int tcan_probe(struct spi_device *_spi)
     }
 
     tcan4550_setupIo(&spi->dev);
+
+    priv->wq = alloc_workqueue("tcan4550_wq", WQ_FREEZABLE | WQ_MEM_RECLAIM, 0);
+	if (!priv->wq) {
+		err = -ENOMEM;
+		goto exit_free;
+	}
+	INIT_WORK(&priv->tx_work, tcan4550_tx_work_handler);
 
     return 0;
 
