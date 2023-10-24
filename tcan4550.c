@@ -703,6 +703,10 @@ static int tcan_probe(struct spi_device *_spi)
 
     spi->bits_per_word = 8;
     spi->max_speed_hz = 18000000;
+    spi->cs_setup = 0;
+    spi->cs_hold = 0;
+    spi->cs_inactive = 0;
+    spi->word_delay = 0;
 
     err = spi_setup(spi);
     if (err)
