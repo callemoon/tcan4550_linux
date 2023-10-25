@@ -536,8 +536,10 @@ static irqreturn_t tcan4450_handleInterrupts(int irq, void *dev)
     // Tx fifo empty
     if (ir & TFE)
     {
-        can_get_echo_skb(dev, 0, 0);
+        stats->tx_bytes += can_get_echo_skb(dev, 0, 0);
         can_free_echo_skb(dev, 0, 0);
+
+        stats->tx_packets++;
 
         //        if(netif_tx_queue_stopped(dev))
         {
@@ -789,15 +791,18 @@ exit_free:
     return err;
 }
 
-void tcan_remove(struct spi_device *spi)
+int tcan_remove(struct spi_device *spi)
 {
     struct net_device *ndev = spi_get_drvdata(spi);
-
+    struct tcan4550_priv *priv = netdev_priv(ndev);
+    
     unregister_candev(ndev);
 
     free_candev(ndev);
 
-//    return 0;
+    destroy_workqueue(priv->wq);
+
+    return 0;
 }
 
 static const struct of_device_id tcan4550_of_match[] = {
