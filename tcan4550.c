@@ -380,7 +380,6 @@ static void tcan4550_tx_work_handler(struct work_struct *ws)
 
     uint32_t index;
 
-    mutex_lock(&priv->spi_lock);
     if (priv->tx_skb)
     {
         bool rtr = false;
@@ -421,11 +420,13 @@ static void tcan4550_tx_work_handler(struct work_struct *ws)
         msg.data[6] = frame->data[6];
         msg.data[7] = frame->data[7];
 
+        mutex_lock(&priv->spi_lock);
         tcan4550_sendMsg(&msg, &index, extended, rtr);
+        mutex_unlock(&priv->spi_lock);
+        
         can_put_echo_skb(priv->tx_skb, net, 0, 0);
         priv->tx_skb = NULL;
     }
-    mutex_unlock(&priv->spi_lock);
 }
 
 bool tcan4550_recMsg(struct canfd_frame *msg)
