@@ -448,7 +448,7 @@ static void tcan4550_tx_work_handler(struct work_struct *ws)
     spi_writex(baseAddress, msgs, buffer);
 
     spi_write32(TXBAR, (1 << writeIndex)); // request buffer transmission
-
+}
 
 /*
 static int tcan4550_sendMsg(struct canfd_frame *msg, uint32_t *index, bool extended, bool rtr)
