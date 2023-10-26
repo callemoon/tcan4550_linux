@@ -80,6 +80,10 @@ const static uint32_t RX_FIFO_START_ADDRESS = 0x200;
 
 const static uint32_t MRAM_BASE = 0x8000;
 
+struct sk_buff *tx_skb[16];
+static int head = 0;
+static int tail = 0;
+
 struct tcan4550_priv
 {
     struct can_priv can; // must be located first in private struct
@@ -253,6 +257,37 @@ static int spi_write128(uint32_t address, uint32_t data[4])
     return ret;
 }
 
+
+static int spi_writex(uint32_t address, int32_t len, uint32_t *data)
+{
+    unsigned char txBuf[68];
+    unsigned char rxBuf[68];
+    int i;
+    int ret;
+
+    if(len > 16)
+    {
+        return 0;
+    }
+
+    txBuf[0] = 0x61;
+    txBuf[1] = address >> 8;
+    txBuf[2] = address & 0xFF;
+    txBuf[3] = len;
+
+    for(i = 0; i < len; i++)
+    {
+        txBuf[4 + (i*4)] = (data[i] >> 24) & 0xFF;
+        txBuf[5 + (i*4)] = (data[i] >> 16) & 0xFF;
+        txBuf[6 + (i*4)] = (data[i] >> 8) & 0xFF;
+        txBuf[7 + (i*4)] = data[i] & 0xFF;
+    }
+
+    ret = tcan4550_spi_trans(4+(len*4), rxBuf, txBuf);
+
+    return ret;
+}
+
 static void tcan4550_set_standby_mode(void)
 {
     uint32_t val;
@@ -334,6 +369,84 @@ static void tcan4550_unlock()
     spi_write32(CCCR, val);
 }
 
+// convert a struct sk_buff to a tcan4550 msg
+void tcan4550_composeMessage(struct sk_buff *skb, uint32_t *buffer)
+{
+    struct can_frame *frame;
+    bool extended;
+    bool rtr;
+    uint32_t len;
+    uint32_t id;
+
+    frame = (struct can_frame *)skb->data;
+
+    if(frame->can_id & CAN_EFF_FLAG)
+    {
+        extended = true;
+    }
+
+    if(frame->can_id & CAN_RTR_FLAG)
+    {
+        rtr = true;
+    }
+
+    len = frame->len;
+    if (len > 8)
+    {
+        len = 8;
+    }
+    
+    if(extended)
+    {
+        id = frame->can_id & CAN_EFF_MASK;
+    }
+    else
+    {
+        id = frame->can_id & CAN_SFF_MASK; 
+    }
+
+    if(extended)
+    {
+        buffer[0] = id;
+    }
+    else
+    {
+        buffer[0] = (id << 18);
+    }
+
+    buffer[0] += (rtr << 29) + (extended << 30);    // add extended and rtr flags
+    buffer[1] = (msg->len << 16);
+    buffer[2] = frame->data[0] + frame->data[1] << 8) + (frame->data[2] << 16) + (frame->data[3] << 24);
+    buffer[3] = frame->data[4] + (frame->data[5] << 8) + (frame->data[6] << 16) + (frame->data[7] << 24);
+}
+
+static void tcan4550_tx_work_handler(struct work_struct *ws)
+{
+    // check for free buffers
+    uint32_t txqfs = spi_read32(TXQFS);
+    uint32_t freeBuffers = txqfs & 0x3F;
+    uint32_t writeIndex = (txqfs >> 16) & 0x1F;
+
+    uint32_t buffer[32];
+
+    int msgs = 0;
+
+    // build an spi message
+
+    uint32_t baseAddress = MRAM_BASE + TX_FIFO_START_ADDRESS + (writeIndex * TX_SLOT_SIZE);
+
+    while((head != tail) && (writeIndex < 16))
+    {
+        composeMessage(tx_skb[tail], &buffer[msgs*4]);
+        msgs++;
+        writeIndex++;
+        tail++;
+    }
+
+    spi_writex(baseAddress, msgs, buffer);
+}
+
+/*
 static int tcan4550_sendMsg(struct canfd_frame *msg, uint32_t *index, bool extended, bool rtr)
 {
     // check for free buffers
@@ -368,7 +481,9 @@ static int tcan4550_sendMsg(struct canfd_frame *msg, uint32_t *index, bool exten
 
     return freeBuffers;
 }
+*/
 
+/*
 static void tcan4550_tx_work_handler(struct work_struct *ws)
 {
     struct tcan4550_priv *priv = container_of(ws, struct tcan4550_priv,
@@ -428,6 +543,7 @@ static void tcan4550_tx_work_handler(struct work_struct *ws)
         priv->tx_skb = NULL;
     }
 }
+*/
 
 bool tcan4550_recMsg(struct canfd_frame *msg)
 {
@@ -537,10 +653,10 @@ static irqreturn_t tcan4450_handleInterrupts(int irq, void *dev)
     // Tx fifo empty
     if (ir & TFE)
     {
-        stats->tx_bytes += can_get_echo_skb(dev, 0, 0);
-        can_free_echo_skb(dev, 0, 0);
+        //stats->tx_bytes += can_get_echo_skb(dev, 0, 0);
+        //can_free_echo_skb(dev, 0, 0);
 
-        stats->tx_packets++;
+        //stats->tx_packets++;
 
         //        if(netif_tx_queue_stopped(dev))
         {
@@ -707,9 +823,18 @@ static netdev_tx_t t_can_start_xmit(struct sk_buff *skb,
         return NETDEV_TX_OK;
     }
 
-    netif_stop_queue(dev);
+    tx_skb[head] = skb;
+    head++;
+    if(head >= 16)
+    {
+        head = 0;
+    }
 
-    priv->tx_skb = skb;
+    if(head == tail)
+    {
+        netif_stop_queue(dev);
+    }
+
     queue_work(priv->wq, &priv->tx_work);
 
     return NETDEV_TX_OK;
