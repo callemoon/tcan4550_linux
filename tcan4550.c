@@ -853,7 +853,7 @@ static netdev_tx_t t_can_start_xmit(struct sk_buff *skb,
         netif_stop_queue(dev);
         mutex_unlock(&priv->spi_lock);
 
-        return NETDEV_TX_BUSY
+        return NETDEV_TX_BUSY;
     }
 
     tx_skb[head] = skb;
