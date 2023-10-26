@@ -446,8 +446,8 @@ static void tcan4550_tx_work_handler(struct work_struct *ws)
     {
         tcan4550_composeMessage(tx_skb[tail], &buffer[msgs*4]);
 
-        can_put_echo_skb(tx_skb[tail], priv->dev, 0, 0);
-        can_free_echo_skb(priv->dev, 0, 0);
+        can_put_echo_skb(tx_skb[tail], priv->ndev, 0, 0);
+        can_free_echo_skb(priv->ndev, 0, 0);
 
         msgs++;
         writeIndexTmp++;
