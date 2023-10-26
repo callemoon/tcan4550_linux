@@ -438,7 +438,7 @@ static void tcan4550_tx_work_handler(struct work_struct *ws)
 
     while((head != tail) && (writeIndex < 16))
     {
-        composeMessage(tx_skb[tail], &buffer[msgs*4]);
+        tcan4550_composeMessage(tx_skb[tail], &buffer[msgs*4]);
         msgs++;
         writeIndex++;
         tail++;
