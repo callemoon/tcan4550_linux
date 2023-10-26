@@ -113,6 +113,7 @@ static int tcan4550_setupInterrupts(struct net_device *dev);
 static void tcan4550_hwReset(void);
 void tcan4550_setupIo(struct device *dev);
 static irqreturn_t tcan4450_handleInterrupts(int irq, void *dev);
+void tcan4550_composeMessage(struct sk_buff *skb, uint32_t *buffer);
 
 static void tcan4550_tx_work_handler(struct work_struct *ws);
 
@@ -917,7 +918,7 @@ exit_free:
     return err;
 }
 
-int tcan_remove(struct spi_device *spi)
+void tcan_remove(struct spi_device *spi)
 {
     struct net_device *ndev = spi_get_drvdata(spi);
     struct tcan4550_priv *priv = netdev_priv(ndev);
@@ -928,7 +929,7 @@ int tcan_remove(struct spi_device *spi)
 
     destroy_workqueue(priv->wq);
 
-    return 0;
+//    return 0;
 }
 
 static const struct of_device_id tcan4550_of_match[] = {
