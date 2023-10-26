@@ -831,6 +831,7 @@ static netdev_tx_t t_can_start_xmit(struct sk_buff *skb,
 {
     struct tcan4550_priv *priv;
     priv = netdev_priv(dev); // get the private
+    uint32_t tmpHead;
 
     // drop invalid can msgs
     if (can_dropped_invalid_skb(dev, skb))
@@ -840,17 +841,23 @@ static netdev_tx_t t_can_start_xmit(struct sk_buff *skb,
 
     mutex_lock(&priv->spi_lock);
 
-    tx_skb[head] = skb;
-    head++;
-    if(head >= 16)
+    tmpHead = head;
+    tmpHead++;
+    if(tmpHead >= 16)
     {
-        head = 0;
+        tmpHead = 0;
     }
-
-    if(head == tail)
+    
+    if(tmpHead == tail)
     {
         netif_stop_queue(dev);
+        mutex_unlock(&priv->spi_lock);
+
+        return NETDEV_TX_BUSY
     }
+
+    tx_skb[head] = skb;
+    head=tmpHead;
 
     mutex_unlock(&priv->spi_lock);
 
