@@ -427,6 +427,7 @@ static void tcan4550_tx_work_handler(struct work_struct *ws)
     uint32_t txqfs = spi_read32(TXQFS);
     uint32_t freeBuffers = txqfs & 0x3F;
     uint32_t writeIndex = (txqfs >> 16) & 0x1F;
+    uint32_t writeIndexTmp = writeIndex;
 
     uint32_t buffer[32];
 
@@ -436,16 +437,18 @@ static void tcan4550_tx_work_handler(struct work_struct *ws)
 
     uint32_t baseAddress = MRAM_BASE + TX_FIFO_START_ADDRESS + (writeIndex * TX_SLOT_SIZE);
 
-    while((head != tail) && (writeIndex < 16))
+    while((head != tail) && (writeIndexTmp < 16))
     {
         tcan4550_composeMessage(tx_skb[tail], &buffer[msgs*4]);
         msgs++;
-        writeIndex++;
+        writeIndexTmp++;
         tail++;
     }
 
     spi_writex(baseAddress, msgs, buffer);
-}
+
+    spi_write32(TXBAR, (1 << writeIndex)); // request buffer transmission
+
 
 /*
 static int tcan4550_sendMsg(struct canfd_frame *msg, uint32_t *index, bool extended, bool rtr)
@@ -835,6 +838,8 @@ static netdev_tx_t t_can_start_xmit(struct sk_buff *skb,
     {
         netif_stop_queue(dev);
     }
+
+    can_put_echoskb(skb, dev, 0, 0);
 
     queue_work(priv->wq, &priv->tx_work);
 
