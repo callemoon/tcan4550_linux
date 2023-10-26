@@ -445,6 +445,10 @@ static void tcan4550_tx_work_handler(struct work_struct *ws)
     while((head != tail) && (writeIndexTmp < 16))
     {
         tcan4550_composeMessage(tx_skb[tail], &buffer[msgs*4]);
+
+        can_put_echo_skb(tx_skb[tail], prev->dev, 0, 0);
+        can_free_echo_skb(prev->dev, 0, 0);
+
         msgs++;
         writeIndexTmp++;
         tail++;
