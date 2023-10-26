@@ -416,7 +416,7 @@ void tcan4550_composeMessage(struct sk_buff *skb, uint32_t *buffer)
     }
 
     buffer[0] += (rtr << 29) + (extended << 30);    // add extended and rtr flags
-    buffer[1] = (len << 16);
+    buffer[1] = (8 << 16);
     buffer[2] = frame->data[0] + (frame->data[1] << 8) + (frame->data[2] << 16) + (frame->data[3] << 24);
     buffer[3] = frame->data[4] + (frame->data[5] << 8) + (frame->data[6] << 16) + (frame->data[7] << 24);
 }
