@@ -374,8 +374,8 @@ static void tcan4550_unlock()
 void tcan4550_composeMessage(struct sk_buff *skb, uint32_t *buffer)
 {
     struct can_frame *frame;
-    bool extended;
-    bool rtr;
+    bool extended = false;
+    bool rtr = false;
     uint32_t len;
     uint32_t id;
 
@@ -445,7 +445,7 @@ static void tcan4550_tx_work_handler(struct work_struct *ws)
         tail++;
         if(tail >= 16)
         {
-            tail = 16;
+            tail = 0;
         }
     }
 
