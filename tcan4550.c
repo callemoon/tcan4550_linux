@@ -437,7 +437,7 @@ static void tcan4550_tx_work_handler(struct work_struct *ws)
 
     uint32_t baseAddress = MRAM_BASE + TX_FIFO_START_ADDRESS + (writeIndex * TX_SLOT_SIZE);
 
-    mutex_lock(&priv->spi_lock);
+    //mutex_lock(&priv->spi_lock);
 
     while((head != tail) && (writeIndexTmp < 16))
     {
@@ -455,7 +455,7 @@ static void tcan4550_tx_work_handler(struct work_struct *ws)
 
     spi_write32(TXBAR, (1 << writeIndex)); // request buffer transmission
 
-    mutex_unlock(&priv->spi_lock);
+    //mutex_unlock(&priv->spi_lock);
 }
 
 /*
