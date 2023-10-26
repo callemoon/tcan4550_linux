@@ -443,6 +443,10 @@ static void tcan4550_tx_work_handler(struct work_struct *ws)
         msgs++;
         writeIndexTmp++;
         tail++;
+        if(tail >= 16)
+        {
+            tail = 16;
+        }
     }
 
     spi_writex(baseAddress, msgs, buffer);
