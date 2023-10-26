@@ -851,7 +851,7 @@ static netdev_tx_t t_can_start_xmit(struct sk_buff *skb,
 
     mutex_unlock(&priv->spi_lock);
 
-    can_put_echo_skb(skb, dev, 0, 0);
+    //can_put_echo_skb(skb, dev, 0, 0);
 
     queue_work(priv->wq, &priv->tx_work);
 
