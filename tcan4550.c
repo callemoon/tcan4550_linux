@@ -24,10 +24,7 @@
 #include <linux/regulator/consumer.h>
 #include <linux/spi/spi.h>
 
-#include <linux/interrupt.h>
-
 #include <linux/gpio.h>
-
 #include <linux/spinlock.h>
 
 #include "tcan4550.h"
@@ -82,7 +79,9 @@ const static uint32_t RX_FIFO_START_ADDRESS = 0x200;
 
 const static uint32_t MRAM_BASE = 0x8000;
 
-struct sk_buff *tx_skb[16];
+#define BUFFER_SIZE 16
+
+struct sk_buff *tx_skb[BUFFER_SIZE];
 static int head = 0;
 static int tail = 0;
 
@@ -126,7 +125,7 @@ static void tcan4550_tx_work_handler(struct work_struct *ws);
 static uint32_t spi_read32(uint32_t address);
 static int spi_write32(uint32_t address, uint32_t data);
 static int spi_read128(uint32_t address, uint32_t data[4]);
-static int spi_write128(uint32_t address, uint32_t data[4]);
+static int spi_write(uint32_t address, int32_t len, uint32_t *data);
 
 static const struct can_bittiming_const tcan_bittiming_const = {
     .name = KBUILD_MODNAME,
@@ -234,41 +233,7 @@ static int spi_write32(uint32_t address, uint32_t data)
     return ret;
 }
 
-static int spi_write128(uint32_t address, uint32_t data[4])
-{
-    unsigned char txBuf[20];
-    unsigned char rxBuf[20];
-
-    int ret;
-
-    txBuf[0] = 0x61;
-    txBuf[1] = address >> 8;
-    txBuf[2] = address & 0xFF;
-    txBuf[3] = 4;
-    txBuf[4] = (data[0] >> 24) & 0xFF;
-    txBuf[5] = (data[0] >> 16) & 0xFF;
-    txBuf[6] = (data[0] >> 8) & 0xFF;
-    txBuf[7] = data[0] & 0xFF;
-    txBuf[8] = (data[1] >> 24) & 0xFF;
-    txBuf[9] = (data[1] >> 16) & 0xFF;
-    txBuf[10] = (data[1] >> 8) & 0xFF;
-    txBuf[11] = data[1] & 0xFF;
-    txBuf[12] = (data[2] >> 24) & 0xFF;
-    txBuf[13] = (data[2] >> 16) & 0xFF;
-    txBuf[14] = (data[2] >> 8) & 0xFF;
-    txBuf[15] = data[2] & 0xFF;
-    txBuf[16] = (data[3] >> 24) & 0xFF;
-    txBuf[17] = (data[3] >> 16) & 0xFF;
-    txBuf[18] = (data[3] >> 8) & 0xFF;
-    txBuf[19] = data[3] & 0xFF;
-
-    ret = tcan4550_spi_trans(20, rxBuf, txBuf);
-
-    return ret;
-}
-
-
-static int spi_writex(uint32_t address, int32_t len, uint32_t *data)
+static int spi_write(uint32_t address, int32_t len, uint32_t *data)
 {
     unsigned char txBuf[260];
     unsigned char rxBuf[260];
@@ -450,7 +415,6 @@ static void tcan4550_tx_work_handler(struct work_struct *ws)
 
     uint32_t baseAddress = MRAM_BASE + TX_FIFO_START_ADDRESS + (writeIndex * TX_SLOT_SIZE);
 
-    //mutex_lock(&priv->spi_lock);
     spin_lock_irqsave(&mLock, flags);
 
     while((head != tail) && (writeIndexTmp < 16))
@@ -465,7 +429,7 @@ static void tcan4550_tx_work_handler(struct work_struct *ws)
         msgs++;
         writeIndexTmp++;
         tail++;
-        if(tail >= 16)
+        if(tail >= BUFFER_SIZE)
         {
             tail = 0;
         }
@@ -475,112 +439,11 @@ static void tcan4550_tx_work_handler(struct work_struct *ws)
 
     if(msgs > 0)
     {
-        spi_writex(baseAddress, msgs, buffer);
+        spi_write(baseAddress, msgs, buffer);
 
         spi_write32(TXBAR, request); // request buffer transmission
     }
-
-    //mutex_unlock(&priv->spi_lock);
 }
-
-/*
-static int tcan4550_sendMsg(struct canfd_frame *msg, uint32_t *index, bool extended, bool rtr)
-{
-    // check for free buffers
-    uint32_t txqfs = spi_read32(TXQFS);
-    uint32_t freeBuffers = txqfs & 0x3F;
-    uint32_t writeIndex = (txqfs >> 16) & 0x1F;
-
-    if (freeBuffers > 0)
-    {
-        uint32_t baseAddress = MRAM_BASE + TX_FIFO_START_ADDRESS + (writeIndex * TX_SLOT_SIZE);
-        uint32_t buffer[4];
-
-        if(extended)
-        {
-            buffer[0] = (msg->can_id);
-        }
-        else
-        {
-            buffer[0] = (msg->can_id << 18);
-        }
-
-        buffer[0] += (rtr << 29) + (extended << 30);    // add extended and rtr flags
-
-        buffer[1] = (msg->len << 16);
-        buffer[2] = msg->data[0] + (msg->data[1] << 8) + (msg->data[2] << 16) + (msg->data[3] << 24);
-        buffer[3] = msg->data[4] + (msg->data[5] << 8) + (msg->data[6] << 16) + (msg->data[7] << 24);
-
-        spi_write128(baseAddress, buffer); // write message id,len and data
-
-        spi_write32(TXBAR, (1 << writeIndex)); // request buffer transmission
-    }
-
-    return freeBuffers;
-}
-*/
-
-/*
-static void tcan4550_tx_work_handler(struct work_struct *ws)
-{
-    struct tcan4550_priv *priv = container_of(ws, struct tcan4550_priv,
-                                              tx_work);
-    struct spi_device *spi = priv->spi;
-    struct net_device *net = priv->ndev;
-    struct can_frame *frame;
-    struct canfd_frame msg;
-
-    uint32_t index;
-
-    if (priv->tx_skb)
-    {
-        bool rtr = false;
-        bool extended = false;
-
-        frame = (struct can_frame *)priv->tx_skb->data;
-
-        if (frame->len > 8)
-        {
-            frame->len = 8;
-        }
-
-        if(frame->can_id & CAN_EFF_FLAG)
-        {
-            extended = true;
-        }
-
-        if(frame->can_id & CAN_RTR_FLAG)
-        {
-            rtr = true;
-        }
-
-        msg.len = frame->len;
-        if(extended)
-        {
-            msg.can_id = frame->can_id & CAN_EFF_MASK;
-        }
-        else
-        {
-           msg.can_id = frame->can_id & CAN_SFF_MASK; 
-        }
-        msg.data[0] = frame->data[0];
-        msg.data[1] = frame->data[1];
-        msg.data[2] = frame->data[2];
-        msg.data[3] = frame->data[3];
-        msg.data[4] = frame->data[4];
-        msg.data[5] = frame->data[5];
-        msg.data[6] = frame->data[6];
-        msg.data[7] = frame->data[7];
-
-        mutex_lock(&priv->spi_lock);
-        tcan4550_sendMsg(&msg, &index, extended, rtr);
-        mutex_unlock(&priv->spi_lock);
-        
-        can_put_echo_skb(priv->tx_skb, net, 0, 0);
-        priv->tx_skb = NULL;
-    }
-}
-*/
 
 bool tcan4550_recMsg(struct canfd_frame *msg)
 {
@@ -658,9 +521,6 @@ static irqreturn_t tcan4450_handleInterrupts(int irq, void *dev)
 
         if (tcan4550_recMsg(&msg))
         {
-            // no need to keep mutex during this phase
-            //mutex_unlock(&priv->spi_lock);
-
             skb = alloc_can_skb(dev, (struct can_frame **)&cf);
 
             if (skb)
@@ -682,8 +542,6 @@ static irqreturn_t tcan4450_handleInterrupts(int irq, void *dev)
                 stats->rx_packets++;
                 stats->rx_bytes += msg.len;
             }
-
-            //mutex_lock(&priv->spi_lock);
         }
     }
 
@@ -861,13 +719,11 @@ static netdev_tx_t t_can_start_xmit(struct sk_buff *skb,
         return NETDEV_TX_OK;
     }
 
-    //mutex_lock(&priv->spi_lock);
-
     spin_lock_irqsave(&mLock, flags);
 
     tmpHead = head;
     tmpHead++;
-    if(tmpHead >= 16)
+    if(tmpHead >= BUFFER_SIZE)
     {
         tmpHead = 0;
     }
@@ -878,8 +734,6 @@ static netdev_tx_t t_can_start_xmit(struct sk_buff *skb,
 
         spin_unlock_irqrestore(&mLock, flags);
 
-        //mutex_unlock(&priv->spi_lock);
-
         return NETDEV_TX_BUSY;
     }
 
@@ -887,10 +741,6 @@ static netdev_tx_t t_can_start_xmit(struct sk_buff *skb,
     head=tmpHead;
 
     spin_unlock_irqrestore(&mLock, flags);
-
-    //mutex_unlock(&priv->spi_lock);
-
-    //can_put_echo_skb(skb, dev, 0, 0);
 
     queue_work(priv->wq, &priv->tx_work);
 
