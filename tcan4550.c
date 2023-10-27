@@ -1,6 +1,5 @@
 // SPDX-License-Identifier: GPL-2.0
 // CAN driver for TI TCAN4550
-// No CAN FD support
 // Copyright (C) 2023 Carl-Magnus Moon
 
 #include <linux/bitfield.h>
@@ -79,7 +78,7 @@ const static uint32_t RX_FIFO_START_ADDRESS = 0x200;
 
 const static uint32_t MRAM_BASE = 0x8000;
 
-#define BUFFER_SIZE 16
+#define BUFFER_SIZE 12
 
 struct sk_buff *tx_skb[BUFFER_SIZE];
 static int head = 0;
@@ -88,7 +87,7 @@ static int tail = 0;
 unsigned long flags;
 static DEFINE_SPINLOCK(mLock);
 
-struct mutex spi_lock; /* SPI device lock */
+static DEFINE_MUTEX(spi_lock); /* SPI device lock */
 
 struct tcan4550_priv
 {
@@ -125,7 +124,7 @@ static void tcan4550_tx_work_handler(struct work_struct *ws);
 static uint32_t spi_read32(uint32_t address);
 static int spi_write32(uint32_t address, uint32_t data);
 static int spi_read128(uint32_t address, uint32_t data[4]);
-static int spi_write(uint32_t address, int32_t len, uint32_t *data);
+static int spi_write_len(uint32_t address, int32_t msgs, uint32_t *data);
 
 static const struct can_bittiming_const tcan_bittiming_const = {
     .name = KBUILD_MODNAME,
@@ -233,14 +232,14 @@ static int spi_write32(uint32_t address, uint32_t data)
     return ret;
 }
 
-static int spi_write(uint32_t address, int32_t len, uint32_t *data)
+static int spi_write_len(uint32_t address, int32_t msgs, uint32_t *data)
 {
     unsigned char txBuf[260];
     unsigned char rxBuf[260];
     int i;
     int ret;
 
-    if(len > 16)
+    if(msgs > 16)
     {
         return 0;
     }
@@ -248,9 +247,9 @@ static int spi_write(uint32_t address, int32_t len, uint32_t *data)
     txBuf[0] = 0x61;
     txBuf[1] = address >> 8;
     txBuf[2] = address & 0xFF;
-    txBuf[3] = len*4;
+    txBuf[3] = msgs*4;
 
-    for(i = 0; i < (len * 4); i++)
+    for(i = 0; i < (msgs * 4); i++)
     {
         txBuf[4 + (i*4)] = ((data[i] >> 24) & 0xFF);
         txBuf[5 + (i*4)] = ((data[i] >> 16) & 0xFF);
@@ -258,7 +257,7 @@ static int spi_write(uint32_t address, int32_t len, uint32_t *data)
         txBuf[7 + (i*4)] = (data[i] & 0xFF);
     }
 
-    ret = tcan4550_spi_trans(4+(len*16), rxBuf, txBuf);
+    ret = tcan4550_spi_trans(4+(msgs*16), rxBuf, txBuf);
 
     return ret;
 }
@@ -374,18 +373,11 @@ void tcan4550_composeMessage(struct sk_buff *skb, uint32_t *buffer)
     if(extended)
     {
         id = frame->can_id & CAN_EFF_MASK;
-    }
-    else
-    {
-        id = frame->can_id & CAN_SFF_MASK; 
-    }
-
-    if(extended)
-    {
         buffer[0] = id;
     }
     else
     {
+        id = frame->can_id & CAN_SFF_MASK; 
         buffer[0] = (id << 18);
     }
 
@@ -407,24 +399,23 @@ static void tcan4550_tx_work_handler(struct work_struct *ws)
     uint32_t writeIndexTmp = writeIndex;
 
     uint32_t buffer[64];
-    uint32_t request = 0;
+    uint32_t requestMask = 0;
 
     int msgs = 0;
-
-    // build an spi message
 
     uint32_t baseAddress = MRAM_BASE + TX_FIFO_START_ADDRESS + (writeIndex * TX_SLOT_SIZE);
 
     spin_lock_irqsave(&mLock, flags);
 
-    while((head != tail) && (writeIndexTmp < 16))
+    // build an spi message consisting of up to 16 CAN messges
+    while((head != tail) && (writeIndexTmp < 16) && (msgs < freeBuffers))
     {
         tcan4550_composeMessage(tx_skb[tail], &buffer[msgs*4]);
 
         can_put_echo_skb(tx_skb[tail], priv->ndev, 0, 0);
         can_free_echo_skb(priv->ndev, 0, 0);
 
-        request += (1 << writeIndexTmp);
+        requestMask += (1 << writeIndexTmp);    // add current message to request mask
 
         msgs++;
         writeIndexTmp++;
@@ -439,9 +430,9 @@ static void tcan4550_tx_work_handler(struct work_struct *ws)
 
     if(msgs > 0)
     {
-        spi_write(baseAddress, msgs, buffer);
+        spi_write_len(baseAddress, msgs, buffer);   // write message data
 
-        spi_write32(TXBAR, request); // request buffer transmission
+        spi_write32(TXBAR, requestMask); // request buffer transmission
     }
 }
 
@@ -498,8 +489,6 @@ static irqreturn_t tcan4450_handleInterrupts(int irq, void *dev)
     struct tcan4550_priv *priv = netdev_priv(dev);
     struct net_device_stats *stats = &((struct net_device *)dev)->stats;
     uint32_t ir;
-
-    //mutex_lock(&priv->spi_lock);
 
     ir = spi_read32(IR);
     spi_write32(IR, ir); // acknowledge interrupts
@@ -574,8 +563,6 @@ static irqreturn_t tcan4450_handleInterrupts(int irq, void *dev)
     {
         // stats->error_passive++;
     }
-
-    //mutex_unlock(&priv->spi_lock);
 
     return IRQ_HANDLED;
 }
@@ -672,8 +659,6 @@ static int tcan_open(struct net_device *dev)
     uint32_t bitRateReg = (bt->phase_seg2 - 1) + ((bt->prop_seg + bt->phase_seg1 - 1) << 8) + ((bt->brp - 1) << 16) + ((bt->sjw - 1) << 25);
     int err;
 
-    mutex_init(&spi_lock);
-
     /* open the can device */
     err = open_candev(dev);
     if (err)
@@ -685,7 +670,7 @@ static int tcan_open(struct net_device *dev)
     if (!tcan4550_init(dev, bitRateReg))
     {
         netdev_err(dev, "failed to init tcan\n");
-        return -1;
+        return -1*ENXIO;
     }
 
     netif_start_queue(dev);
