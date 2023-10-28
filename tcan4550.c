@@ -119,12 +119,14 @@ static irqreturn_t tcan4450_handleInterrupts(int irq, void *dev);
 void tcan4550_composeMessage(struct sk_buff *skb, uint32_t *buffer);
 
 static void tcan4550_tx_work_handler(struct work_struct *ws);
+bool tcan4550_recMsgs(void);
 
 // spi function headers
 static uint32_t spi_read32(uint32_t address);
 static int spi_write32(uint32_t address, uint32_t data);
 static int spi_read128(uint32_t address, uint32_t data[4]);
 static int spi_write_len(uint32_t address, int32_t msgs, uint32_t *data);
+static int spi_read_len(uint32_t address, int32_t msgs, uint32_t *data);
 
 static const struct can_bittiming_const tcan_bittiming_const = {
     .name = KBUILD_MODNAME,
@@ -207,6 +209,36 @@ static int spi_read128(uint32_t address, uint32_t data[4])
     data[1] = rxBuf[11] + (rxBuf[10] << 8) + (rxBuf[9] << 16) + (rxBuf[8] << 24);
     data[2] = rxBuf[15] + (rxBuf[14] << 8) + (rxBuf[13] << 16) + (rxBuf[12] << 24);
     data[3] = rxBuf[19] + (rxBuf[18] << 8) + (rxBuf[17] << 16) + (rxBuf[16] << 24);
+
+    return ret;
+}
+
+static int spi_read_len(uint32_t address, int32_t msgs, uint32_t *data)
+{
+    unsigned char txBuf[260];
+    unsigned char rxBuf[260];
+
+    int ret;
+
+    if(msgs > 16)
+    {
+        return 0;
+    }
+
+    txBuf[0] = 0x41;
+    txBuf[1] = address >> 8;
+    txBuf[2] = address & 0xFF;
+    txBuf[3] = msgs*4;
+
+    ret = tcan4550_spi_trans(4 + (msgs * 16), rxBuf, txBuf);
+
+    for(i = 0; i < (msgs*4); i++)
+    {
+        data[0 + (i*4)] = rxBuf[7+(i*16)] + (rxBuf[6 + (i*16)] << 8) + (rxBuf[5 + (i*16)] << 16) + (rxBuf[4 + (i*16)] << 24);
+        data[1 + (i*4)] = rxBuf[11 + (i*16)] + (rxBuf[10 + (i*16)] << 8) + (rxBuf[9 + (i*16)] << 16) + (rxBuf[8 + (i*16)] << 24);
+        data[2 + (i*4)] = rxBuf[15 + (i*16)] + (rxBuf[14 + (i*16)] << 8) + (rxBuf[13 + (i*16)] << 16) + (rxBuf[12 + (i*16)] << 24);
+        data[3 + (i*4)] = rxBuf[19 + (i*16)] + (rxBuf[18 + (i*16)] << 8) + (rxBuf[17 + (i*16)] << 16) + (rxBuf[16 + (i*16)] << 24);
+    }
 
     return ret;
 }
@@ -441,14 +473,79 @@ static void tcan4550_tx_work_handler(struct work_struct *ws)
     }
 }
 
-bool tcan4550_recMsg(struct canfd_frame *msg)
+bool tcan4550_recMsgs()
 {
+    char rxBuf[256];
+    uint32_t i;
+
     uint32_t rxf0s = spi_read32(RXF0S);
 
     uint32_t fillLevel = rxf0s & 0xFF;
     uint32_t getIndex = (rxf0s >> 8) & 0xFF;
     // uint32_t putIndex = (rxf0s >> 16) & 0xFF;
 
+    uint32_t msgsToGet = fillLevel;
+    
+    if(msgsToGet > (RX_MSG_BOXES - getIndex))
+    {
+        msgsToGet = (RX_MSG_BOXES - getIndex);
+    }
+
+    if(msgsToGet > 4)
+    {
+        msgsToGet = 4;
+    }
+    
+    uint32_t baseAddress = MRAM_BASE + RX_FIFO_START_ADDRESS + (getIndex * RX_SLOT_SIZE);
+
+    spi_read_len(baseAddress, msgsToGet, rxBuf);
+
+    spi_write32(RXF0A, getIndex + msgsToGet); // acknowledge the last message we have read, that will automatically free all read
+
+    for(i = 0; i < msgsToGet; i++)
+    {
+        struct canfd_frame *cf;
+        struct sk_buff *skb;
+
+        skb = alloc_can_skb(dev, (struct can_frame **)&cf);
+
+        if (skb)
+        {
+            uint32_t data[4];
+
+            data[0] = rxBuf[7+(i*16)] + (rxBuf[6+(i*16)] << 8) + (rxBuf[5+(i*16)] << 16) + (rxBuf[4+(i*16)] << 24);
+            data[1] = rxBuf[11+(i*16)] + (rxBuf[10+(i*16)] << 8) + (rxBuf[9+(i*16)] << 16) + (rxBuf[8+(i*16)] << 24);
+            data[2] = rxBuf[15+(i*16)] + (rxBuf[14+(i*16)] << 8) + (rxBuf[13+(i*16)] << 16) + (rxBuf[12+(i*16)] << 24);
+            data[3] = rxBuf[19+(i*16)] + (rxBuf[18+(i*16)] << 8) + (rxBuf[17+(i*16)] << 16) + (rxBuf[16+(i*16)] << 24);
+
+            cf->len = (data[1] >> 16) & 0x7F;
+        
+            if(data[0] & (1 << 30)) // extended
+            {
+                cf->can_id = (data[0] & CAN_EFF_MASK) | CAN_EFF_FLAG;
+            }
+            else
+            {
+                cf->can_id = (data[0] >> 18) & CAN_SFF_MASK; 
+            }
+
+            cf->data[0] = data[2] & 0xFF;
+            cf->data[1] = (data[2] >> 8) & 0xFF;
+            cf->data[2] = (data[2] >> 16) & 0xFF;
+            cf->data[3] = (data[2] >> 24) & 0xFF;
+            cf->data[4] = data[3] & 0xFF;
+            cf->data[5] = (data[3] >> 8) & 0xFF;
+            cf->data[6] = (data[3] >> 16) & 0xFF;
+            cf->data[7] = (data[3] >> 24) & 0xFF;
+
+            netif_rx(skb);
+
+            //stats->rx_packets++;
+            //stats->rx_bytes += msg.len;
+        }
+    }
+
+    /*
     if (fillLevel > 0)
     {
         uint32_t data[4];
@@ -485,6 +582,7 @@ bool tcan4550_recMsg(struct canfd_frame *msg)
 
         return true;
     }
+    */
 
     return false;
 }
@@ -509,34 +607,7 @@ static irqreturn_t tcan4450_handleInterrupts(int irq, void *dev)
     // rx fifo 0 new message
     if (ir & RF0N)
     {
-        struct canfd_frame msg;
-        struct sk_buff *skb;
-        struct canfd_frame *cf;
-
-        if (tcan4550_recMsg(&msg))
-        {
-            skb = alloc_can_skb(dev, (struct can_frame **)&cf);
-
-            if (skb)
-            {
-                cf->len = msg.len;
-                cf->can_id = msg.can_id;
-
-                cf->data[0] = msg.data[0];
-                cf->data[1] = msg.data[1];
-                cf->data[2] = msg.data[2];
-                cf->data[3] = msg.data[3];
-                cf->data[4] = msg.data[4];
-                cf->data[5] = msg.data[5];
-                cf->data[6] = msg.data[6];
-                cf->data[7] = msg.data[7];
-
-                netif_rx(skb);
-
-                stats->rx_packets++;
-                stats->rx_bytes += msg.len;
-            }
-        }
+        tcan4550_recMsgs();
     }
 
     // Tx fifo empty
