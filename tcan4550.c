@@ -481,8 +481,8 @@ bool tcan4550_recMsgs(struct net_device *dev)
 
     uint32_t rxf0s = spi_read32(RXF0S);
 
-    uint32_t fillLevel = rxf0s & 0xFF;
-    uint32_t getIndex = (rxf0s >> 8) & 0xFF;
+    uint32_t fillLevel = (rxf0s & 0x7F);          // 0-64
+    uint32_t getIndex = ((rxf0s >> 8) & 0x3F);    // 0-63
     // uint32_t putIndex = (rxf0s >> 16) & 0xFF;
 
     uint32_t msgsToGet = fillLevel;
@@ -501,7 +501,7 @@ bool tcan4550_recMsgs(struct net_device *dev)
 
     spi_read_len(baseAddress, msgsToGet, rxBuf);
 
-    spi_write32(RXF0A, getIndex + msgsToGet); // acknowledge the last message we have read, that will automatically free all read
+    spi_write32(RXF0A, (getIndex + msgsToGet - 1)); // acknowledge the last message we have read, that will automatically free all read
 
     for(i = 0; i < msgsToGet; i++)
     {
