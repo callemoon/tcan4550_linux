@@ -71,7 +71,7 @@ const static uint32_t MODESEL_2 = 0x80;
 // MRAM config
 const static uint32_t RX_SLOT_SIZE = 16;
 const static uint32_t TX_SLOT_SIZE = 16;
-const static uint32_t TX_MSG_BOXES = 16;
+const static uint32_t TX_MSG_BOXES = 32;
 const static uint32_t TX_FIFO_START_ADDRESS = 0x0;
 const static uint32_t RX_MSG_BOXES = 16;
 const static uint32_t RX_FIFO_START_ADDRESS = 0x200;
@@ -443,7 +443,7 @@ static void tcan4550_tx_work_handler(struct work_struct *ws)
     spin_lock_irqsave(&mLock, flags);
 
     // build an spi message consisting of up to 16 CAN messges
-    while((head != tail) && (msgs < freeBuffers) && (writeIndexTmp < 16))
+    while((head != tail) && (msgs < freeBuffers) && (writeIndexTmp < TX_MSG_BOXES))
     {
         tcan4550_composeMessage(tx_skb[tail], &buffer[msgs*4]);
 
