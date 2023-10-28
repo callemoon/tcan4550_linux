@@ -478,6 +478,7 @@ bool tcan4550_recMsgs(struct net_device *dev)
 {
     uint32_t rxBuf[64];
     uint32_t i;
+    struct net_device_stats *stats = &((struct net_device *)dev)->stats;
 
     uint32_t rxf0s = spi_read32(RXF0S);
 
@@ -541,8 +542,8 @@ bool tcan4550_recMsgs(struct net_device *dev)
 
             netif_rx(skb);
 
-            //stats->rx_packets++;
-            //stats->rx_bytes += msg.len;
+            stats->rx_packets++;
+            stats->rx_bytes += cf->len;
         }
     }
 
