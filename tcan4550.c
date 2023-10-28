@@ -740,6 +740,8 @@ static netdev_tx_t t_can_start_xmit(struct sk_buff *skb,
 
         netdev_err(dev, "stopping queue\n");
 
+        queue_work(priv->wq, &priv->tx_work);
+
         return NETDEV_TX_BUSY;
     }
 
