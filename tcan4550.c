@@ -512,7 +512,7 @@ bool tcan4550_recMsgs()
 
         if (skb)
         {
-            uint32_t data[4]
+            uint32_t data[4];
 
             data[0] = rxBuf[0+(i*4)];
             data[1] = rxBuf[1+(i*4)];
@@ -886,7 +886,7 @@ exit_free:
     return err;
 }
 
-int tcan_remove(struct spi_device *spi)
+void tcan_remove(struct spi_device *spi)
 {
     struct net_device *ndev = spi_get_drvdata(spi);
     struct tcan4550_priv *priv = netdev_priv(ndev);
@@ -897,7 +897,7 @@ int tcan_remove(struct spi_device *spi)
 
     destroy_workqueue(priv->wq);
 
-    return 0;
+//    return 0;
 }
 
 static const struct of_device_id tcan4550_of_match[] = {
