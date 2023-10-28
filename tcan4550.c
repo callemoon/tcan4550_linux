@@ -533,8 +533,6 @@ static irqreturn_t tcan4450_handleInterrupts(int irq, void *dev)
     struct net_device_stats *stats = &((struct net_device *)dev)->stats;
     uint32_t ir;
 
-    spin_lock_irqsave(&mLock, flags);
-
     ir = spi_read32(IR);
     spi_write32(IR, ir); // acknowledge interrupts
 
@@ -577,8 +575,6 @@ static irqreturn_t tcan4450_handleInterrupts(int irq, void *dev)
     {
         // stats->error_passive++;
     }
-
-    spin_unlock_irqrestore(&mLock, flags);
 
     return IRQ_HANDLED;
 }
