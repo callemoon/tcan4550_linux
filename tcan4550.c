@@ -439,7 +439,6 @@ static void tcan4550_tx_work_handler(struct work_struct *ws)
             tail = 0;
         }
 
-        stats->tx_packets++;
         //stats->tx_bytes += cf->len;
     }
 
@@ -451,6 +450,9 @@ static void tcan4550_tx_work_handler(struct work_struct *ws)
 
         spi_write32(TXBAR, requestMask); // request buffer transmission
     }
+
+    stats->tx_packets++;
+
 }
 
 bool tcan4550_recMsgs(struct net_device *dev)
