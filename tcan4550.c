@@ -78,18 +78,18 @@ const static uint32_t RX_FIFO_START_ADDRESS = 0x200;
 
 const static uint32_t MRAM_BASE = 0x8000;
 
+#define MAX_MESSAGES    16  // Max CAN messages in an SPI pacakge
 #define MAX_BURST_RX_PACKAGES   4
 
-#define TX_BUFFER_SIZE 16
+#define TX_BUFFER_SIZE 15+1 // one slot is used to keep track of empty queue
 
 struct sk_buff *tx_skb[TX_BUFFER_SIZE];
 static int head = 0;
 static int tail = 0;
 
 unsigned long flags;
-static DEFINE_SPINLOCK(mLock);
-
-static DEFINE_MUTEX(spi_lock); /* SPI device lock */
+static DEFINE_SPINLOCK(mLock); // spinlock protecting tx_skb buffer
+static DEFINE_MUTEX(spi_lock); // mutex protecting SPI access
 
 struct tcan4550_priv
 {
@@ -100,7 +100,6 @@ struct tcan4550_priv
 
     struct workqueue_struct *wq;
     struct work_struct tx_work;
-    struct sk_buff *tx_skb;
 };
 
 static struct spi_device *spi = 0; // global spi handle
@@ -194,13 +193,13 @@ static uint32_t spi_read32(uint32_t address)
 
 static int spi_read_len(uint32_t address, int32_t msgs, uint32_t *data)
 {
-    unsigned char txBuf[260];
-    unsigned char rxBuf[260];
+    unsigned char txBuf[4+(MAX_MESSAGES*16)];
+    unsigned char rxBuf[4+(MAX_MESSAGES*16)];
 
     int ret;
     int i;
 
-    if(msgs > 16)
+    if(msgs > MAX_MESSAGES)
     {
         return 0;
     }
@@ -246,12 +245,12 @@ static int spi_write32(uint32_t address, uint32_t data)
 
 static int spi_write_len(uint32_t address, int32_t msgs, uint32_t *data)
 {
-    unsigned char txBuf[260];
-    unsigned char rxBuf[260];
+    unsigned char txBuf[4+(MAX_MESSAGES*16)];
+    unsigned char rxBuf[4+(MAX_MESSAGES*16)];
     int i;
     int ret;
 
-    if(msgs > 16)
+    if(msgs > MAX_MESSAGES)
     {
         return 0;
     }
@@ -527,6 +526,7 @@ bool tcan4550_recMsgs(struct net_device *dev)
     return false;
 }
 
+// main interrupt handler - run as an irq thread
 static irqreturn_t tcan4450_handleInterrupts(int irq, void *dev)
 {
     struct tcan4550_priv *priv = netdev_priv(dev);
@@ -553,11 +553,6 @@ static irqreturn_t tcan4450_handleInterrupts(int irq, void *dev)
     // Tx fifo empty
     if (ir & TFE)
     {
-        //stats->tx_bytes += can_get_echo_skb(dev, 0, 0);
-        //can_free_echo_skb(dev, 0, 0);
-
-        //stats->tx_packets++;
-
         //        if(netif_tx_queue_stopped(dev))
         {
             netif_wake_queue(dev);
@@ -686,7 +681,7 @@ static int tcan_open(struct net_device *dev)
     if (!tcan4550_init(dev, bitRateReg))
     {
         netdev_err(dev, "failed to init tcan\n");
-        return -1*ENXIO;
+        return -ENXIO;
     }
 
     netif_start_queue(dev);
@@ -703,6 +698,9 @@ static int tcan_close(struct net_device *dev)
     close_candev(dev);
 
     free_irq(spi->irq, dev);
+
+    head = 0;
+    tail = 0;
 
     return 0;
 }
