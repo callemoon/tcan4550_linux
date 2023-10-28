@@ -119,7 +119,7 @@ static irqreturn_t tcan4450_handleInterrupts(int irq, void *dev);
 void tcan4550_composeMessage(struct sk_buff *skb, uint32_t *buffer);
 
 static void tcan4550_tx_work_handler(struct work_struct *ws);
-bool tcan4550_recMsgs(void);
+bool tcan4550_recMsgs(struct net_device *dev);
 
 // spi function headers
 static uint32_t spi_read32(uint32_t address);
@@ -474,7 +474,7 @@ static void tcan4550_tx_work_handler(struct work_struct *ws)
     }
 }
 
-bool tcan4550_recMsgs()
+bool tcan4550_recMsgs(struct net_device *dev)
 {
     uint32_t rxBuf[64];
     uint32_t i;
@@ -608,7 +608,7 @@ static irqreturn_t tcan4450_handleInterrupts(int irq, void *dev)
     // rx fifo 0 new message
     if (ir & RF0N)
     {
-        tcan4550_recMsgs();
+        tcan4550_recMsgs(dev);
     }
 
     // Tx fifo empty
