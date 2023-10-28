@@ -126,7 +126,6 @@ bool tcan4550_recMsgs(struct net_device *dev);
 // spi function headers
 static uint32_t spi_read32(uint32_t address);
 static int spi_write32(uint32_t address, uint32_t data);
-static int spi_read128(uint32_t address, uint32_t data[4]);
 static int spi_write_len(uint32_t address, int32_t msgs, uint32_t *data);
 static int spi_read_len(uint32_t address, int32_t msgs, uint32_t *data);
 
@@ -191,28 +190,6 @@ static uint32_t spi_read32(uint32_t address)
     ret = tcan4550_spi_trans(8, rxBuf, txBuf);
 
     return (rxBuf[4] << 24) + (rxBuf[5] << 16) + (rxBuf[6] << 8) + rxBuf[7];
-}
-
-static int spi_read128(uint32_t address, uint32_t data[4])
-{
-    unsigned char txBuf[20];
-    unsigned char rxBuf[20];
-
-    int ret;
-
-    txBuf[0] = 0x41;
-    txBuf[1] = address >> 8;
-    txBuf[2] = address & 0xFF;
-    txBuf[3] = 4;
-
-    ret = tcan4550_spi_trans(20, rxBuf, txBuf);
-
-    data[0] = rxBuf[7] + (rxBuf[6] << 8) + (rxBuf[5] << 16) + (rxBuf[4] << 24);
-    data[1] = rxBuf[11] + (rxBuf[10] << 8) + (rxBuf[9] << 16) + (rxBuf[8] << 24);
-    data[2] = rxBuf[15] + (rxBuf[14] << 8) + (rxBuf[13] << 16) + (rxBuf[12] << 24);
-    data[3] = rxBuf[19] + (rxBuf[18] << 8) + (rxBuf[17] << 16) + (rxBuf[16] << 24);
-
-    return ret;
 }
 
 static int spi_read_len(uint32_t address, int32_t msgs, uint32_t *data)
