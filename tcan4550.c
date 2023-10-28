@@ -578,7 +578,7 @@ static irqreturn_t tcan4450_handleInterrupts(int irq, void *dev)
         // stats->error_passive++;
     }
 
-    spin_lock_irqrestore(&mLock, flags);
+    spin_unlock_irqrestore(&mLock, flags);
 
     return IRQ_HANDLED;
 }
