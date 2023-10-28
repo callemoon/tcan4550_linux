@@ -78,9 +78,11 @@ const static uint32_t RX_FIFO_START_ADDRESS = 0x200;
 
 const static uint32_t MRAM_BASE = 0x8000;
 
-#define BUFFER_SIZE 16
+#define MAX_BURST_RX_PACKAGES   4
 
-struct sk_buff *tx_skb[BUFFER_SIZE];
+#define TX_BUFFER_SIZE 16
+
+struct sk_buff *tx_skb[TX_BUFFER_SIZE];
 static int head = 0;
 static int tail = 0;
 
@@ -441,7 +443,7 @@ static void tcan4550_tx_work_handler(struct work_struct *ws)
     spin_lock_irqsave(&mLock, flags);
 
     // build an spi message consisting of up to 16 CAN messges
-    while((head != tail) && (msgs < freeBuffers))
+    while((head != tail) && (msgs < freeBuffers) && (writeIndexTmp < 16))
     {
         tcan4550_composeMessage(tx_skb[tail], &buffer[msgs*4]);
 
@@ -452,13 +454,9 @@ static void tcan4550_tx_work_handler(struct work_struct *ws)
 
         msgs++;
         writeIndexTmp++;
-        if(writeIndexTmp >= 16)
-        {
-           writeIndexTmp = 0; 
-        }
 
         tail++;
-        if(tail >= BUFFER_SIZE)
+        if(tail >= TX_BUFFER_SIZE)
         {
             tail = 0;
         }
@@ -488,14 +486,16 @@ bool tcan4550_recMsgs(struct net_device *dev)
 
     uint32_t msgsToGet = fillLevel;
     
+    // after wrap around of rx buffer we need a new spi request
     if(msgsToGet > (RX_MSG_BOXES - getIndex))
     {
         msgsToGet = (RX_MSG_BOXES - getIndex);
     }
 
-    if(msgsToGet > 4)
+    // do not read too many packages in one go as we also need to ack rx packages to give room for new rx and perform tx
+    if(msgsToGet > MAX_BURST_RX_PACKAGES)
     {
-        msgsToGet = 4;
+        msgsToGet = MAX_BURST_RX_PACKAGES;
     }
     
     uint32_t baseAddress = MRAM_BASE + RX_FIFO_START_ADDRESS + (getIndex * RX_SLOT_SIZE);
@@ -546,45 +546,6 @@ bool tcan4550_recMsgs(struct net_device *dev)
             stats->rx_bytes += cf->len;
         }
     }
-
-    /*
-    if (fillLevel > 0)
-    {
-        uint32_t data[4];
-        uint32_t baseAddress = MRAM_BASE + RX_FIFO_START_ADDRESS + (getIndex * RX_SLOT_SIZE);
-
-        spi_read128(baseAddress, data);
-
-        spi_write32(RXF0A, getIndex); // acknowledge that we have read the message
-
-        if(data[0] & (1 << 30)) // extended
-        {
-            msg->can_id = (data[0] & CAN_EFF_MASK) | CAN_EFF_FLAG;
-        }
-        else
-        {
-           msg->can_id = (data[0] >> 18) & CAN_SFF_MASK; 
-        }
-
-        if(data[0] & (1 << 29)) // rtr
-        {
-           msg->can_id |= CAN_RTR_FLAG;
-        }
-
-        msg->len = (data[1] >> 16) & 0x7F;
-
-        msg->data[0] = data[2] & 0xFF;
-        msg->data[1] = (data[2] >> 8) & 0xFF;
-        msg->data[2] = (data[2] >> 16) & 0xFF;
-        msg->data[3] = (data[2] >> 24) & 0xFF;
-        msg->data[4] = data[3] & 0xFF;
-        msg->data[5] = (data[3] >> 8) & 0xFF;
-        msg->data[6] = (data[3] >> 16) & 0xFF;
-        msg->data[7] = (data[3] >> 24) & 0xFF;
-
-        return true;
-    }
-    */
 
     return false;
 }
@@ -786,7 +747,7 @@ static netdev_tx_t t_can_start_xmit(struct sk_buff *skb,
 
     tmpHead = head;
     tmpHead++;
-    if(tmpHead >= BUFFER_SIZE)
+    if(tmpHead >= TX_BUFFER_SIZE)
     {
         tmpHead = 0;
     }
