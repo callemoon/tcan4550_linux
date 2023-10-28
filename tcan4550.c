@@ -219,6 +219,7 @@ static int spi_read_len(uint32_t address, int32_t msgs, uint32_t *data)
     unsigned char rxBuf[260];
 
     int ret;
+    int i;
 
     if(msgs > 16)
     {
@@ -475,7 +476,7 @@ static void tcan4550_tx_work_handler(struct work_struct *ws)
 
 bool tcan4550_recMsgs()
 {
-    char rxBuf[256];
+    uint32_t rxBuf[64];
     uint32_t i;
 
     uint32_t rxf0s = spi_read32(RXF0S);
@@ -511,12 +512,12 @@ bool tcan4550_recMsgs()
 
         if (skb)
         {
-            uint32_t data[4];
+            uint32_t data[4]
 
-            data[0] = rxBuf[7+(i*16)] + (rxBuf[6+(i*16)] << 8) + (rxBuf[5+(i*16)] << 16) + (rxBuf[4+(i*16)] << 24);
-            data[1] = rxBuf[11+(i*16)] + (rxBuf[10+(i*16)] << 8) + (rxBuf[9+(i*16)] << 16) + (rxBuf[8+(i*16)] << 24);
-            data[2] = rxBuf[15+(i*16)] + (rxBuf[14+(i*16)] << 8) + (rxBuf[13+(i*16)] << 16) + (rxBuf[12+(i*16)] << 24);
-            data[3] = rxBuf[19+(i*16)] + (rxBuf[18+(i*16)] << 8) + (rxBuf[17+(i*16)] << 16) + (rxBuf[16+(i*16)] << 24);
+            data[0] = rxBuf[0+(i*4)];
+            data[1] = rxBuf[1+(i*4)];
+            data[2] = rxBuf[2+(i*4)];
+            data[3] = rxBuf[3+(i*4)];
 
             cf->len = (data[1] >> 16) & 0x7F;
         
