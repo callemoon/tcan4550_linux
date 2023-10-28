@@ -78,7 +78,7 @@ const static uint32_t RX_FIFO_START_ADDRESS = 0x200;
 
 const static uint32_t MRAM_BASE = 0x8000;
 
-#define BUFFER_SIZE 12
+#define BUFFER_SIZE 16
 
 struct sk_buff *tx_skb[BUFFER_SIZE];
 static int head = 0;
@@ -408,7 +408,7 @@ static void tcan4550_tx_work_handler(struct work_struct *ws)
     spin_lock_irqsave(&mLock, flags);
 
     // build an spi message consisting of up to 16 CAN messges
-    while((head != tail) && (writeIndexTmp < 16) && (msgs < freeBuffers))
+    while((head != tail) && (msgs < freeBuffers))
     {
         tcan4550_composeMessage(tx_skb[tail], &buffer[msgs*4]);
 
@@ -419,6 +419,11 @@ static void tcan4550_tx_work_handler(struct work_struct *ws)
 
         msgs++;
         writeIndexTmp++;
+        if(writeIndexTmp >= 16)
+        {
+           writeIndexTmp = 0; 
+        }
+
         tail++;
         if(tail >= BUFFER_SIZE)
         {
@@ -809,7 +814,7 @@ exit_free:
     return err;
 }
 
-void tcan_remove(struct spi_device *spi)
+int tcan_remove(struct spi_device *spi)
 {
     struct net_device *ndev = spi_get_drvdata(spi);
     struct tcan4550_priv *priv = netdev_priv(ndev);
@@ -820,7 +825,7 @@ void tcan_remove(struct spi_device *spi)
 
     destroy_workqueue(priv->wq);
 
-//    return 0;
+    return 0;
 }
 
 static const struct of_device_id tcan4550_of_match[] = {
