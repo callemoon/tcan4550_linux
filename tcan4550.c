@@ -555,6 +555,7 @@ static irqreturn_t tcan4450_handleInterrupts(int irq, void *dev)
     {
         //        if(netif_tx_queue_stopped(dev))
         {
+            netdev_err(dev, "waking queue\n");
             netif_wake_queue(dev);
         }
     }
@@ -732,6 +733,8 @@ static netdev_tx_t t_can_start_xmit(struct sk_buff *skb,
         netif_stop_queue(dev);
 
         spin_unlock_irqrestore(&mLock, flags);
+
+        netdev_err(dev, "stopping queue\n");
 
         return NETDEV_TX_BUSY;
     }
