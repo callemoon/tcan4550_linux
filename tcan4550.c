@@ -698,8 +698,14 @@ static int tcan_open(struct net_device *dev)
     if (!tcan4550_init(dev, bitRateReg))
     {
         netdev_err(dev, "failed to init tcan\n");
+
+        close_candev(dev);
+
         return -ENXIO;
     }
+
+    priv->head = 0;
+    priv->tail = 0;
 
     netif_start_queue(dev);
 
@@ -712,13 +718,8 @@ static int tcan_close(struct net_device *dev)
     struct tcan4550_priv *priv = netdev_priv(dev);
 
     netif_stop_queue(dev);
-
     close_candev(dev);
-
     free_irq(spi->irq, dev);
-
-    priv->head = 0;
-    priv->tail = 0;
 
     return 0;
 }
@@ -860,9 +861,7 @@ void tcan_remove(struct spi_device *spi)
     struct tcan4550_priv *priv = netdev_priv(ndev);
     
     unregister_candev(ndev);
-
     free_candev(ndev);
-
     destroy_workqueue(priv->wq);
 
 #if LINUX_VERSION_CODE <= KERNEL_VERSION(5,18,0)
