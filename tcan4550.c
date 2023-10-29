@@ -81,7 +81,7 @@ const static uint32_t MRAM_BASE = 0x8000;
 const static uint32_t MRAM_SIZE_WORDS = 512;
 
 // Buffer configuration
-#define MAX_BURST_TX_MESSAGES   12  // Max CAN messages in a SPI write
+#define MAX_BURST_TX_MESSAGES   4  // Max CAN messages in a SPI write
 #define MAX_BURST_RX_MESSAGES   4   // Max CAN messages in a SPI read
 
 #define TX_BUFFER_SIZE 15+1 // one slot is reserved to be able to keep track of full queue
@@ -490,7 +490,8 @@ bool tcan4550_recMsgs(struct net_device *dev)
     // uint32_t putIndex = (rxf0s >> 16) & 0xFF;
 
     uint32_t msgsToGet = fillLevel;
-    
+    uint32_t baseAddress = MRAM_BASE + RX_FIFO_START_ADDRESS + (getIndex * RX_SLOT_SIZE);
+
     // stop if hw rx buffer wraps around, we need to receive the rest in a separate SPI package
     if(msgsToGet > (RX_MSG_BOXES - getIndex))
     {
@@ -503,8 +504,6 @@ bool tcan4550_recMsgs(struct net_device *dev)
         msgsToGet = MAX_BURST_RX_MESSAGES;
     }
     
-    uint32_t baseAddress = MRAM_BASE + RX_FIFO_START_ADDRESS + (getIndex * RX_SLOT_SIZE);
-
     spi_read_len(spi, baseAddress, msgsToGet, rxBuf);
 
     spi_write32(spi, RXF0A, (getIndex + msgsToGet - 1)); // acknowledge the last message we have read, that will automatically free all read
@@ -559,7 +558,6 @@ bool tcan4550_recMsgs(struct net_device *dev)
 static irqreturn_t tcan4450_handleInterrupts(int irq, void *dev)
 {
     struct tcan4550_priv *priv = netdev_priv(dev);
-    struct net_device_stats *stats = &((struct net_device *)dev)->stats;
     uint32_t ir;
 
     ir = spi_read32(spi, IR);
@@ -730,7 +728,7 @@ static int tcan_open(struct net_device *dev)
 // Called if user performs ifconfig canx down
 static int tcan_close(struct net_device *dev)
 {
-    struct tcan4550_priv *priv = netdev_priv(dev);
+    //struct tcan4550_priv *priv = netdev_priv(dev);
 
     netif_stop_queue(dev);
     close_candev(dev);
@@ -746,8 +744,9 @@ static netdev_tx_t t_can_start_xmit(struct sk_buff *skb,
                                     struct net_device *dev)
 {
     struct tcan4550_priv *priv;
-    priv = netdev_priv(dev); // get the private
     uint32_t tmpHead;
+
+    priv = netdev_priv(dev); // get the private
 
     // drop invalid can msgs
     if (can_dropped_invalid_skb(dev, skb))
@@ -875,7 +874,7 @@ void tcan_remove(struct spi_device *spi)
     struct net_device *ndev = spi_get_drvdata(spi);
     struct tcan4550_priv *priv = netdev_priv(ndev);
     
-    unregister_candev(ndev);
+      unregister_candev(ndev);
     free_candev(ndev);
     destroy_workqueue(priv->wq);
 
