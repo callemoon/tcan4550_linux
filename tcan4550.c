@@ -675,6 +675,7 @@ static bool tcan4550_init(struct net_device *dev, uint32_t bitRateReg)
 /* Linux CAN Driver standard functions                        */
 /*------------------------------------------------------------*/
 
+// Called if user performs ifconfig canx up
 static int tcan_open(struct net_device *dev)
 {
     struct tcan4550_priv *priv = netdev_priv(dev);
@@ -701,6 +702,7 @@ static int tcan_open(struct net_device *dev)
     return 0;
 }
 
+// Called if user performs ifconfig canx down
 static int tcan_close(struct net_device *dev)
 {
     //    struct tcan4550_priv *priv = netdev_priv(dev);
@@ -717,6 +719,9 @@ static int tcan_close(struct net_device *dev)
     return 0;
 }
 
+// Called from Linux network subsystem when we should send a message
+// Linux run network subsystem as a soft-irq so we are not allowed to sleep here
+// We will here copy frame to our sw tx buffer. If sw tx buffer is full, stop queue with netif_stop_queue.
 static netdev_tx_t t_can_start_xmit(struct sk_buff *skb,
                                     struct net_device *dev)
 {
@@ -769,6 +774,8 @@ static const struct net_device_ops m_can_netdev_ops = {
     .ndo_change_mtu = can_change_mtu,
 };
 
+// Called by Linux if it matches our driver to a entry in device tree
+// or if we manually perform insmod of our driver
 static int tcan_probe(struct spi_device *_spi)
 {
     struct net_device *ndev;
