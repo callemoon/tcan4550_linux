@@ -106,7 +106,6 @@ static struct spi_device *spi = 0; // global spi handle
 static struct gpio_desc *reset_gpio;
 
 // tcan function headers
-static int tcan4550_sendMsg(struct canfd_frame *msg, uint32_t *index, bool extended, bool rtr);
 static void tcan4550_set_normal_mode(void);
 static void tcan4550_set_standby_mode(void);
 static void tcan4550_configure_mram(void);
@@ -360,7 +359,7 @@ static void tcan4550_unlock()
     spi_write32(CCCR, val);
 }
 
-// convert a struct sk_buff to a tcan4550 msg
+// convert a struct sk_buff to a tcan4550 msg and store in buffer
 void tcan4550_composeMessage(struct sk_buff *skb, uint32_t *buffer)
 {
     struct can_frame *frame;
@@ -463,7 +462,7 @@ static void tcan4550_tx_work_handler(struct work_struct *ws)
 
 bool tcan4550_recMsgs(struct net_device *dev)
 {
-    uint32_t rxBuf[64];
+    uint32_t rxBuf[MAX_BURST_RX_PACKAGES*4];
     uint32_t i;
     struct net_device_stats *stats = &((struct net_device *)dev)->stats;
 
@@ -554,9 +553,6 @@ static irqreturn_t tcan4450_handleInterrupts(int irq, void *dev)
     //        return IRQ_NONE;
     //    }
 
-    // spi_write32(STATUS, 0xFFFFFFFF);
-    // spi_write32(INTERRUPT_FLAGS, 0xFFFFFFFF);
-
     // rx fifo 0 new message
     if (ir & RF0N)
     {
@@ -575,18 +571,18 @@ static irqreturn_t tcan4450_handleInterrupts(int irq, void *dev)
 
     if (ir & BO)
     {
-        // stats->bus_off++;
+        priv->can.can_stats.bus_off++;
         can_bus_off(dev);
     }
 
     if (ir & EW)
     {
-        // stats->error_warning++;
+        priv->can.can_stats.error_warning++;
     }
 
     if (ir & EP)
     {
-        // stats->error_passive++;
+        priv->can.can_stats.error_passive++;
     }
 
     return IRQ_HANDLED;
@@ -841,7 +837,7 @@ exit_free:
     return err;
 }
 
-void tcan_remove(struct spi_device *spi)
+int tcan_remove(struct spi_device *spi)
 {
     struct net_device *ndev = spi_get_drvdata(spi);
     struct tcan4550_priv *priv = netdev_priv(ndev);
@@ -852,7 +848,7 @@ void tcan_remove(struct spi_device *spi)
 
     destroy_workqueue(priv->wq);
 
-//    return 0;
+    return 0;
 }
 
 static const struct of_device_id tcan4550_of_match[] = {
