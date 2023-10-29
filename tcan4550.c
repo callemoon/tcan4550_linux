@@ -849,7 +849,11 @@ exit_free:
     return err;
 }
 
+#if LINUX_VERSION_CODE <= KERNEL_VERSION(6,0,0)
 int tcan_remove(struct spi_device *spi)
+#else
+void tcan_remove(struct spi_device *spi)
+#endif
 {
     struct net_device *ndev = spi_get_drvdata(spi);
     struct tcan4550_priv *priv = netdev_priv(ndev);
@@ -860,7 +864,9 @@ int tcan_remove(struct spi_device *spi)
 
     destroy_workqueue(priv->wq);
 
+#if LINUX_VERSION_CODE <= KERNEL_VERSION(6,0,0)
     return 0;
+#endif
 }
 
 static const struct of_device_id tcan4550_of_match[] = {
