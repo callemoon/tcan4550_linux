@@ -84,10 +84,6 @@ const static uint32_t MRAM_SIZE_WORDS = 512;
 
 #define TX_BUFFER_SIZE 15+1 // one slot is reserved to be able to keep track of full queue
 
-struct sk_buff *tx_skb[TX_BUFFER_SIZE];
-static int head = 0;
-static int tail = 0;
-
 unsigned long flags;
 static DEFINE_SPINLOCK(mLock); // spinlock protecting tx_skb buffer
 static DEFINE_MUTEX(spi_lock); // mutex protecting SPI access
@@ -103,6 +99,7 @@ static const struct can_bittiming_const tcan4550_bittiming_const = {
     .brp_max = 511,
     .brp_inc = 1,
 };
+
 struct tcan4550_priv
 {
     struct can_priv can; // must be located first in private struct
@@ -112,6 +109,10 @@ struct tcan4550_priv
 
     struct workqueue_struct *wq;
     struct work_struct tx_work;
+
+    struct sk_buff *tx_skb[TX_BUFFER_SIZE];
+    static int head = 0;
+    static int tail = 0;
 };
 
 static struct spi_device *spi = 0; // global spi handle
@@ -426,13 +427,13 @@ static void tcan4550_tx_work_handler(struct work_struct *ws)
     spin_lock_irqsave(&mLock, flags);
 
     // build an spi message consisting of up to 16 CAN messges
-    while((head != tail) && (msgs < freeBuffers) && (writeIndexTmp < TX_MSG_BOXES))
+    while((priv->head != priv->tail) && (msgs < freeBuffers) && (writeIndexTmp < TX_MSG_BOXES))
     {
         uint32_t len;
 
-        tcan4550_composeMessage(tx_skb[tail], &txBuffer[msgs*4]);
+        tcan4550_composeMessage(priv->tx_skb[priv->tail], &txBuffer[msgs*4]);
 
-        can_put_echo_skb(tx_skb[tail], priv->ndev, 0, 0);
+        can_put_echo_skb(priv->tx_skb[priv->tail], priv->ndev, 0, 0);
         len = can_get_echo_skb(priv->ndev, 0, 0);
         can_free_echo_skb(priv->ndev, 0, 0);
 
@@ -441,10 +442,10 @@ static void tcan4550_tx_work_handler(struct work_struct *ws)
         msgs++;
         writeIndexTmp++;
 
-        tail++;
-        if(tail >= TX_BUFFER_SIZE)
+        priv->tail++;
+        if(priv->tail >= TX_BUFFER_SIZE)
         {
-            tail = 0;
+            priv->tail = 0;
         }
 
         stats->tx_packets++;
@@ -707,7 +708,7 @@ static int tcan_open(struct net_device *dev)
 // Called if user performs ifconfig canx down
 static int tcan_close(struct net_device *dev)
 {
-    //    struct tcan4550_priv *priv = netdev_priv(dev);
+    struct tcan4550_priv *priv = netdev_priv(dev);
 
     netif_stop_queue(dev);
 
@@ -715,8 +716,8 @@ static int tcan_close(struct net_device *dev)
 
     free_irq(spi->irq, dev);
 
-    head = 0;
-    tail = 0;
+    priv->head = 0;
+    priv->tail = 0;
 
     return 0;
 }
@@ -739,14 +740,14 @@ static netdev_tx_t t_can_start_xmit(struct sk_buff *skb,
 
     spin_lock_irqsave(&mLock, flags);
 
-    tmpHead = head;
+    tmpHead = priv->head;
     tmpHead++;
     if(tmpHead >= TX_BUFFER_SIZE)
     {
         tmpHead = 0;
     }
     
-    if(tmpHead == tail)
+    if(tmpHead == priv->tail)
     {
         netif_stop_queue(dev);
 
@@ -759,8 +760,8 @@ static netdev_tx_t t_can_start_xmit(struct sk_buff *skb,
         return NETDEV_TX_BUSY;
     }
 
-    tx_skb[head] = skb;
-    head=tmpHead;
+    priv->tx_skb[priv->head] = skb;
+    priv->head=tmpHead;
 
     spin_unlock_irqrestore(&mLock, flags);
 
