@@ -394,7 +394,7 @@ static void tcan4550_tx_work_handler(struct work_struct *ws)
     struct tcan4550_priv *priv = container_of(ws, struct tcan4550_priv,
                                               tx_work);
 
-    struct net_device_stats *stats = &((struct net_device *)priv->ndev)->stats;
+    struct net_device_stats *stats = &(priv->ndev->stats);
 
     // check for free buffers
     uint32_t txqfs = spi_read32(spi, TXQFS);
