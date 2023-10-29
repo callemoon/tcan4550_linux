@@ -77,11 +77,12 @@ const static uint32_t RX_MSG_BOXES = 16;
 const static uint32_t RX_FIFO_START_ADDRESS = 0x200;
 
 const static uint32_t MRAM_BASE = 0x8000;
+const static uint32_t MRAM_SIZE_WORDS = 512;
 
 #define MAX_SPI_MESSAGES    16  // Max CAN messages in an SPI pacakge
-#define MAX_BURST_RX_PACKAGES   4
+#define MAX_BURST_RX_PACKAGES   4   // Max CAN messages in a read-burst
 
-#define TX_BUFFER_SIZE 15+1 // one slot is used to keep track of empty queue
+#define TX_BUFFER_SIZE 15+1 // one slot is reserved to be able to keep track of full queue
 
 struct sk_buff *tx_skb[TX_BUFFER_SIZE];
 static int head = 0;
@@ -91,6 +92,17 @@ unsigned long flags;
 static DEFINE_SPINLOCK(mLock); // spinlock protecting tx_skb buffer
 static DEFINE_MUTEX(spi_lock); // mutex protecting SPI access
 
+static const struct can_bittiming_const tcan4550_bittiming_const = {
+    .name = KBUILD_MODNAME,
+    .tseg1_min = 1,
+    .tseg1_max = 255,
+    .tseg2_min = 1,
+    .tseg2_max = 127,
+    .sjw_max = 127,
+    .brp_min = 1,
+    .brp_max = 511,
+    .brp_inc = 1,
+};
 struct tcan4550_priv
 {
     struct can_priv can; // must be located first in private struct
@@ -126,18 +138,6 @@ static uint32_t spi_read32(uint32_t address);
 static int spi_write32(uint32_t address, uint32_t data);
 static int spi_write_len(uint32_t address, int32_t msgs, uint32_t *data);
 static int spi_read_len(uint32_t address, int32_t msgs, uint32_t *data);
-
-static const struct can_bittiming_const tcan_bittiming_const = {
-    .name = KBUILD_MODNAME,
-    .tseg1_min = 1,
-    .tseg1_max = 255,
-    .tseg2_min = 1,
-    .tseg2_max = 127,
-    .sjw_max = 127,
-    .brp_min = 1,
-    .brp_max = 511,
-    .brp_inc = 1,
-};
 
 /*------------------------------------------------------------*/
 /* SPI helper functions                                       */
@@ -331,7 +331,7 @@ static void tcan4550_configure_mram()
     uint32_t i;
 
     // clear MRAM to avoid risk of ECC errors 2kB = 512 words
-    for (i = 0; i < 512; i++)
+    for (i = 0; i < MRAM_SIZE_WORDS; i++)
     {
         spi_write32(MRAM_BASE + (i * 4), 0);
     }
@@ -416,7 +416,7 @@ static void tcan4550_tx_work_handler(struct work_struct *ws)
     uint32_t writeIndex = (txqfs >> 16) & 0x1F;
     uint32_t writeIndexTmp = writeIndex;
 
-    uint32_t buffer[64];
+    uint32_t txBuffer[MAX_SPI_MESSAGES*4];
     uint32_t requestMask = 0;
 
     int msgs = 0;
@@ -430,7 +430,7 @@ static void tcan4550_tx_work_handler(struct work_struct *ws)
     {
         uint32_t len;
 
-        tcan4550_composeMessage(tx_skb[tail], &buffer[msgs*4]);
+        tcan4550_composeMessage(tx_skb[tail], &txBuffer[msgs*4]);
 
         can_put_echo_skb(tx_skb[tail], priv->ndev, 0, 0);
         len = can_get_echo_skb(priv->ndev, 0, 0);
@@ -455,7 +455,7 @@ static void tcan4550_tx_work_handler(struct work_struct *ws)
 
     if(msgs > 0)
     {
-        spi_write_len(baseAddress, msgs, buffer);   // write message data
+        spi_write_len(baseAddress, msgs, txBuffer);   // write message data
 
         spi_write32(TXBAR, requestMask); // request buffer transmission
     }
@@ -795,7 +795,7 @@ static int tcan_probe(struct spi_device *_spi)
     priv->dev = &spi->dev;
     priv->ndev = ndev;
     priv->spi = spi;
-    priv->can.bittiming_const = &tcan_bittiming_const;
+    priv->can.bittiming_const = &tcan4550_bittiming_const;
     priv->can.clock.freq = 40000000;
 
     ndev->netdev_ops = &m_can_netdev_ops;
