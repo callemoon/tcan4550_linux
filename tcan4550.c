@@ -29,7 +29,7 @@
 
 #include "tcan4550.h"
 
-// Registers
+// TCAN4550 Registers
 const static uint32_t DEVICE_ID1 = 0x0;
 const static uint32_t DEVICE_ID2 = 0x4;
 
@@ -80,6 +80,7 @@ const static uint32_t RX_FIFO_START_ADDRESS = 0x200;
 const static uint32_t MRAM_BASE = 0x8000;
 const static uint32_t MRAM_SIZE_WORDS = 512;
 
+// Buffer configuration
 #define MAX_BURST_TX_MESSAGES   12  // Max CAN messages in a SPI write
 #define MAX_BURST_RX_MESSAGES   4   // Max CAN messages in a SPI read
 
@@ -116,10 +117,10 @@ struct tcan4550_priv
     int tail;
 };
 
-static struct spi_device *spi = 0; // global spi handle
-static struct gpio_desc *reset_gpio;
+static struct spi_device *spi = 0;   // global spi handle. TODO remove.
+static struct gpio_desc *reset_gpio; // global gpio handle. TODO remove.
 
-// tcan function headers
+// TCAN function headers
 static void tcan4550_set_normal_mode(void);
 static void tcan4550_set_standby_mode(void);
 static void tcan4550_configure_mram(void);
@@ -135,7 +136,7 @@ static void tcan4550_composeMessage(struct sk_buff *skb, uint32_t *buffer);
 static void tcan4550_tx_work_handler(struct work_struct *ws);
 static bool tcan4550_recMsgs(struct net_device *dev);
 
-// spi function headers
+// SPI function headers
 static uint32_t spi_read32(struct spi_device *_spi, uint32_t address);
 static int spi_write32(struct spi_device *_spi, uint32_t address, uint32_t data);
 static int spi_write_len(struct spi_device *_spi, uint32_t address, int32_t msgs, uint32_t *data);
@@ -422,13 +423,25 @@ static void tcan4550_tx_work_handler(struct work_struct *ws)
     uint32_t requestMask = 0;
 
     uint32_t msgs = 0;
-
+    
     uint32_t baseAddress = MRAM_BASE + TX_FIFO_START_ADDRESS + (writeIndex * TX_SLOT_SIZE);
+
+    uint32_t msgsToTransmit = freeBuffers;
+    if(msgsToTransmit > MAX_BURST_TX_MESSAGES)
+    {
+        msgsToTransmit = MAX_BURST_TX_MESSAGES;
+    }
+
+    // Make sure TX buffer does not wrap around
+    if((writewriteIndexTmp + msgsToTransmit) > TX_MSG_BOXES)
+    {
+        msgsToTransmit = (TX_MSG_BOXES - writewriteIndexTmp);
+    }
 
     spin_lock_irqsave(&mLock, flags);
 
-    // build an spi message consisting of several can msgs
-    while((priv->head != priv->tail) && (msgs < freeBuffers) && (writeIndexTmp < TX_MSG_BOXES) && (msgs < MAX_BURST_TX_MESSAGES))
+    // build an SPI message consisting of several CAN msgs
+    while((priv->head != priv->tail) && (msgs < msgsToTransmit))
     {
         uint32_t len;
 
@@ -449,6 +462,7 @@ static void tcan4550_tx_work_handler(struct work_struct *ws)
             priv->tail = 0;
         }
 
+        // update stats
         stats->tx_packets++;
         stats->tx_bytes += len;
     }
