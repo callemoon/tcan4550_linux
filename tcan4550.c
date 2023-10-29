@@ -247,7 +247,7 @@ static int spi_write32(struct spi_device *_spi, uint32_t address, uint32_t data)
     return ret;
 }
 
-static int spi_write_len(uint32_t address, int32_t msgs, uint32_t *data)
+static int spi_write_len(struct spi_device *_spi, uint32_t address, int32_t msgs, uint32_t *data)
 {
     unsigned char txBuf[4+(MAX_SPI_MESSAGES*16)];
     unsigned char rxBuf[4+(MAX_SPI_MESSAGES*16)];
@@ -272,7 +272,7 @@ static int spi_write_len(uint32_t address, int32_t msgs, uint32_t *data)
         txBuf[7 + (i*4)] = (data[i] & 0xFF);
     }
 
-    ret = spi_trans(spi, 4+(msgs*16), rxBuf, txBuf);
+    ret = spi_trans(_spi, 4+(msgs*16), rxBuf, txBuf);
 
     return ret;
 }
