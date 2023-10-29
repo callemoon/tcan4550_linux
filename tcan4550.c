@@ -80,8 +80,8 @@ const static uint32_t RX_FIFO_START_ADDRESS = 0x200;
 const static uint32_t MRAM_BASE = 0x8000;
 const static uint32_t MRAM_SIZE_WORDS = 512;
 
-#define MAX_SPI_MESSAGES    16  // Max CAN messages in an SPI pacakge
-#define MAX_BURST_RX_PACKAGES   4   // Max CAN messages in a read-burst
+#define MAX_BURST_TX_MESSAGES   12  // Max CAN messages in a SPI write
+#define MAX_BURST_RX_MESSAGES   4   // Max CAN messages in a SPI read
 
 #define TX_BUFFER_SIZE 15+1 // one slot is reserved to be able to keep track of full queue
 
@@ -197,13 +197,13 @@ static uint32_t spi_read32(struct spi_device *_spi, uint32_t address)
 
 static int spi_read_len(struct spi_device *_spi, uint32_t address, int32_t msgs, uint32_t *data)
 {
-    unsigned char txBuf[4+(MAX_SPI_MESSAGES*16)];
-    unsigned char rxBuf[4+(MAX_SPI_MESSAGES*16)];
+    unsigned char txBuf[4+(MAX_BURST_TX_MESSAGES*16)];
+    unsigned char rxBuf[4+(MAX_BURST_TX_MESSAGES*16)];
 
     int ret;
     uint32_t i;
 
-    if(msgs > MAX_SPI_MESSAGES)
+    if(msgs > MAX_BURST_TX_MESSAGES)
     {
         return 0;
     }
@@ -249,12 +249,12 @@ static int spi_write32(struct spi_device *_spi, uint32_t address, uint32_t data)
 
 static int spi_write_len(struct spi_device *_spi, uint32_t address, int32_t msgs, uint32_t *data)
 {
-    unsigned char txBuf[4+(MAX_SPI_MESSAGES*16)];
-    unsigned char rxBuf[4+(MAX_SPI_MESSAGES*16)];
+    unsigned char txBuf[4+(MAX_BURST_TX_MESSAGES*16)];
+    unsigned char rxBuf[4+(MAX_BURST_TX_MESSAGES*16)];
     uint32_t i;
     int ret;
 
-    if(msgs > MAX_SPI_MESSAGES)
+    if(msgs > MAX_BURST_TX_MESSAGES)
     {
         return 0;
     }
@@ -418,7 +418,7 @@ static void tcan4550_tx_work_handler(struct work_struct *ws)
     uint32_t writeIndex = (txqfs >> 16) & 0x1F;
     uint32_t writeIndexTmp = writeIndex;
 
-    uint32_t txBuffer[MAX_SPI_MESSAGES*4];
+    uint32_t txBuffer[MAX_BURST_TX_MESSAGES*4];
     uint32_t requestMask = 0;
 
     uint32_t msgs = 0;
@@ -428,7 +428,7 @@ static void tcan4550_tx_work_handler(struct work_struct *ws)
     spin_lock_irqsave(&mLock, flags);
 
     // build an spi message consisting of several can msgs
-    while((priv->head != priv->tail) && (msgs < freeBuffers) && (writeIndexTmp < TX_MSG_BOXES) && (msgs < MAX_SPI_MESSAGES))
+    while((priv->head != priv->tail) && (msgs < freeBuffers) && (writeIndexTmp < TX_MSG_BOXES) && (msgs < MAX_BURST_TX_MESSAGES))
     {
         uint32_t len;
 
@@ -465,7 +465,7 @@ static void tcan4550_tx_work_handler(struct work_struct *ws)
 
 bool tcan4550_recMsgs(struct net_device *dev)
 {
-    uint32_t rxBuf[MAX_BURST_RX_PACKAGES*4];
+    uint32_t rxBuf[MAX_BURST_RX_MESSAGES*4];
     uint32_t i;
     struct net_device_stats *stats = &((struct net_device *)dev)->stats;
 
@@ -477,16 +477,16 @@ bool tcan4550_recMsgs(struct net_device *dev)
 
     uint32_t msgsToGet = fillLevel;
     
-    // stop if hw rx buffer wraps around, we need to send the reset in a separate spi package
+    // stop if hw rx buffer wraps around, we need to receive the rest in a separate SPI package
     if(msgsToGet > (RX_MSG_BOXES - getIndex))
     {
         msgsToGet = (RX_MSG_BOXES - getIndex);
     }
 
     // do not read too many packages in one go as we also need to ack rx packages to give room for new rx and perform tx
-    if(msgsToGet > MAX_BURST_RX_PACKAGES)
+    if(msgsToGet > MAX_BURST_RX_MESSAGES)
     {
-        msgsToGet = MAX_BURST_RX_PACKAGES;
+        msgsToGet = MAX_BURST_RX_MESSAGES;
     }
     
     uint32_t baseAddress = MRAM_BASE + RX_FIFO_START_ADDRESS + (getIndex * RX_SLOT_SIZE);
