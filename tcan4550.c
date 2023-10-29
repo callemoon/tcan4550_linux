@@ -865,7 +865,7 @@ void tcan_remove(struct spi_device *spi)
 
     destroy_workqueue(priv->wq);
 
-#if LINUX_VERSION_CODE <= KERNEL_VERSION(6,0,0)
+#if LINUX_VERSION_CODE <= KERNEL_VERSION(5,18,0)
     return 0;
 #endif
 }
