@@ -476,7 +476,7 @@ bool tcan4550_recMsgs(struct net_device *dev)
     uint32_t msgsToGet = fillLevel;
     uint32_t baseAddress = MRAM_BASE + RX_FIFO_START_ADDRESS + (getIndex * RX_SLOT_SIZE);
 
-    // stop if hw rx buffer wraps around, we need to receive the rest in a separate SPI package
+    // stop if hw rx buffer wraps around, we need to request the rest in a separate SPI package
     if(msgsToGet > (RX_MSG_BOXES - getIndex))
     {
         msgsToGet = (RX_MSG_BOXES - getIndex);
@@ -858,7 +858,7 @@ void tcan_remove(struct spi_device *spi)
     struct net_device *ndev = spi_get_drvdata(spi);
     struct tcan4550_priv *priv = netdev_priv(ndev);
     
-      unregister_candev(ndev);
+    unregister_candev(ndev);
     free_candev(ndev);
     destroy_workqueue(priv->wq);
 
