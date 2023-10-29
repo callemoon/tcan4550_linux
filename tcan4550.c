@@ -2,25 +2,16 @@
 // CAN driver for TI TCAN4550
 // Copyright (C) 2023 Carl-Magnus Moon
 
-#include <linux/bitfield.h>
 #include <linux/can/dev.h>
-#include <linux/ethtool.h>
-#include <linux/hrtimer.h>
 #include <linux/interrupt.h>
 #include <linux/io.h>
-#include <linux/iopoll.h>
 #include <linux/kernel.h>
 #include <linux/module.h>
 #include <linux/netdevice.h>
 #include <linux/of.h>
 #include <linux/phy/phy.h>
-#include <linux/pinctrl/consumer.h>
-#include <linux/platform_device.h>
-#include <linux/pm_runtime.h>
 
 #include <linux/gpio/consumer.h>
-#include <linux/regmap.h>
-#include <linux/regulator/consumer.h>
 #include <linux/spi/spi.h>
 
 #include <linux/gpio.h>
@@ -373,15 +364,8 @@ void tcan4550_composeMessage(struct sk_buff *skb, uint32_t *buffer)
 
     frame = (struct can_frame *)skb->data;
 
-    if(frame->can_id & CAN_EFF_FLAG)
-    {
-        extended = true;
-    }
-
-    if(frame->can_id & CAN_RTR_FLAG)
-    {
-        rtr = true;
-    }
+    extended = (frame->can_id & CAN_EFF_FLAG)?true:false;
+    rtr = (frame->can_id & CAN_RTR_FLAG)?true:false;
 
     len = frame->len;
     if (len > 8)
