@@ -856,7 +856,6 @@ int tcan_remove(struct spi_device *spi)
 static const struct of_device_id tcan4550_of_match[] = {
     {
         .compatible = "ti,tcan4x5x",
-        .data = (void *)4550,
     },
     {}};
 MODULE_DEVICE_TABLE(of, tcan4550_of_match);
@@ -864,7 +863,6 @@ MODULE_DEVICE_TABLE(of, tcan4550_of_match);
 static const struct spi_device_id tcan4550_id_table[] = {
     {
         .name = "tcan4x5x",
-        .driver_data = (kernel_ulong_t)4550,
     },
     {}};
 MODULE_DEVICE_TABLE(spi, tcan4550_id_table);
