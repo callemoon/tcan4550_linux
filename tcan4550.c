@@ -428,9 +428,12 @@ static void tcan4550_tx_work_handler(struct work_struct *ws)
     // build an spi message consisting of up to 16 CAN messges
     while((head != tail) && (msgs < freeBuffers) && (writeIndexTmp < TX_MSG_BOXES))
     {
+        uint32_t len;
+
         tcan4550_composeMessage(tx_skb[tail], &buffer[msgs*4]);
 
         can_put_echo_skb(tx_skb[tail], priv->ndev, 0, 0);
+        len = can_get_echo_skb(priv->ndev, 0, 0);
         can_free_echo_skb(priv->ndev, 0, 0);
 
         requestMask += (1 << writeIndexTmp);    // add current message to request mask
@@ -444,7 +447,8 @@ static void tcan4550_tx_work_handler(struct work_struct *ws)
             tail = 0;
         }
 
-        //stats->tx_bytes += cf->len;
+        stats->tx_packets++;
+        stats->tx_bytes += len;
     }
 
     spin_unlock_irqrestore(&mLock, flags);
@@ -455,8 +459,6 @@ static void tcan4550_tx_work_handler(struct work_struct *ws)
 
         spi_write32(TXBAR, requestMask); // request buffer transmission
     }
-
-    stats->tx_packets++;
 
 }
 
@@ -564,7 +566,7 @@ static irqreturn_t tcan4450_handleInterrupts(int irq, void *dev)
     {
         //        if(netif_tx_queue_stopped(dev))
         {
-            netdev_err(dev, "waking queue\n");
+            //netdev_err(dev, "waking queue\n");
             netif_wake_queue(dev);
         }
     }
@@ -743,7 +745,7 @@ static netdev_tx_t t_can_start_xmit(struct sk_buff *skb,
 
         spin_unlock_irqrestore(&mLock, flags);
 
-        netdev_err(dev, "stopping queue\n");
+        //netdev_err(dev, "stopping queue\n");
 
         queue_work(priv->wq, &priv->tx_work);
 
