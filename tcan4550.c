@@ -212,7 +212,7 @@ static int spi_read_len(uint32_t address, int32_t msgs, uint32_t *data)
     txBuf[2] = address & 0xFF;
     txBuf[3] = msgs*4;
 
-    ret = spi_trans(4 + (msgs * 16), rxBuf, txBuf);
+    ret = spi_trans(spi, 4 + (msgs * 16), rxBuf, txBuf);
 
     for(i = 0; i < (msgs*4); i++)
     {
