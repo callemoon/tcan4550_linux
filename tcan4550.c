@@ -551,10 +551,10 @@ static irqreturn_t tcan4450_handleInterrupts(int irq, void *dev)
     ir = spi_read32(spi, IR);
     spi_write32(spi, IR, ir); // acknowledge interrupts
 
-    //    if(ir == 0)
-    //    {
-    //        return IRQ_NONE;
-    //    }
+    if(ir == 0)
+    {
+        return IRQ_NONE;
+    }
 
     // rx fifo 0 new message
     if (ir & RF0N)
@@ -611,7 +611,8 @@ static int tcan4550_setupInterrupts(struct net_device *dev)
     // interrupt enables
     spi_write32(spi, INTERRUPT_ENABLE, 0);
 
-    // as SPI is slow, run irq in a kernel thread
+    // start interrupt handler
+    // as SPI is slow, run irq in a thread
     err = request_threaded_irq(spi->irq, NULL, tcan4450_handleInterrupts, IRQF_ONESHOT, dev->name, dev);
     if (err)
     {
