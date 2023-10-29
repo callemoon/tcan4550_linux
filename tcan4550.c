@@ -81,7 +81,7 @@ const static uint32_t MRAM_BASE = 0x8000;
 const static uint32_t MRAM_SIZE_WORDS = 512;
 
 // Buffer configuration
-#define MAX_BURST_TX_MESSAGES   4  // Max CAN messages in a SPI write
+#define MAX_BURST_TX_MESSAGES   8  // Max CAN messages in a SPI write
 #define MAX_BURST_RX_MESSAGES   4   // Max CAN messages in a SPI read
 
 #define TX_BUFFER_SIZE 15+1 // one slot is reserved to be able to keep track of full queue
