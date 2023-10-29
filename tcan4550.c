@@ -136,10 +136,10 @@ static void tcan4550_tx_work_handler(struct work_struct *ws);
 bool tcan4550_recMsgs(struct net_device *dev);
 
 // spi function headers
-static uint32_t spi_read32(uint32_t address);
-static int spi_write32(uint32_t address, uint32_t data);
-static int spi_write_len(uint32_t address, int32_t msgs, uint32_t *data);
-static int spi_read_len(uint32_t address, int32_t msgs, uint32_t *data);
+static uint32_t spi_read32(struct spi_device *_spi, uint32_t address);
+static int spi_write32(struct spi_device *_spi, uint32_t address, uint32_t data);
+static int spi_write_len(struct spi_device *_spi, uint32_t address, int32_t msgs, uint32_t *data);
+static int spi_read_len(struct spi_device *_spi, uint32_t address, int32_t msgs, uint32_t *data);
 
 /*------------------------------------------------------------*/
 /* SPI helper functions                                       */
@@ -178,7 +178,7 @@ static int spi_trans(struct spi_device *_spi, int len, unsigned char *rxBuf, uns
     return ret;
 }
 
-static uint32_t spi_read32(uint32_t address)
+static uint32_t spi_read32(struct spi_device *_spi, uint32_t address)
 {
     unsigned char txBuf[8];
     unsigned char rxBuf[8];
@@ -190,12 +190,12 @@ static uint32_t spi_read32(uint32_t address)
     txBuf[2] = address & 0xFF;
     txBuf[3] = 1;
 
-    ret = spi_trans(spi, 8, rxBuf, txBuf);
+    ret = spi_trans(_spi, 8, rxBuf, txBuf);
 
     return (rxBuf[4] << 24) + (rxBuf[5] << 16) + (rxBuf[6] << 8) + rxBuf[7];
 }
 
-static int spi_read_len(uint32_t address, int32_t msgs, uint32_t *data)
+static int spi_read_len(struct spi_device *_spi, uint32_t address, int32_t msgs, uint32_t *data)
 {
     unsigned char txBuf[4+(MAX_SPI_MESSAGES*16)];
     unsigned char rxBuf[4+(MAX_SPI_MESSAGES*16)];
@@ -213,7 +213,7 @@ static int spi_read_len(uint32_t address, int32_t msgs, uint32_t *data)
     txBuf[2] = address & 0xFF;
     txBuf[3] = msgs*4;
 
-    ret = spi_trans(spi, 4 + (msgs * 16), rxBuf, txBuf);
+    ret = spi_trans(_spi, 4 + (msgs * 16), rxBuf, txBuf);
 
     for(i = 0; i < (msgs*4); i++)
     {
@@ -226,7 +226,7 @@ static int spi_read_len(uint32_t address, int32_t msgs, uint32_t *data)
     return ret;
 }
 
-static int spi_write32(uint32_t address, uint32_t data)
+static int spi_write32(struct spi_device *_spi, uint32_t address, uint32_t data)
 {
     unsigned char txBuf[8];
     unsigned char rxBuf[8];
@@ -242,7 +242,7 @@ static int spi_write32(uint32_t address, uint32_t data)
     txBuf[6] = (data >> 8) & 0xFF;
     txBuf[7] = data & 0xFF;
 
-    ret = spi_trans(spi, 8, rxBuf, txBuf);
+    ret = spi_trans(_spi, 8, rxBuf, txBuf);
 
     return ret;
 }
@@ -284,24 +284,24 @@ static void tcan4550_set_standby_mode(void)
 {
     uint32_t val;
 
-    val = spi_read32(MODES_OF_OPERATION);
+    val = spi_read32(spi, MODES_OF_OPERATION);
 
     val |= MODESEL_1;
     val &= ~((uint32_t)MODESEL_2);
 
-    spi_write32(MODES_OF_OPERATION, val);
+    spi_write32(spi, MODES_OF_OPERATION, val);
 }
 
 static void tcan4550_set_normal_mode(void)
 {
     uint32_t val;
 
-    val = spi_read32(MODES_OF_OPERATION);
+    val = spi_read32(spi, MODES_OF_OPERATION);
 
     val |= MODESEL_2;
     val &= ~((uint32_t)MODESEL_1);
 
-    spi_write32(MODES_OF_OPERATION, val);
+    spi_write32(spi, MODES_OF_OPERATION, val);
 }
 
 static bool tcan4550_readIdentification(void)
@@ -309,8 +309,8 @@ static bool tcan4550_readIdentification(void)
     uint32_t id1;
     uint32_t id2;
 
-    id1 = spi_read32(DEVICE_ID1);
-    id2 = spi_read32(DEVICE_ID2);
+    id1 = spi_read32(spi, DEVICE_ID1);
+    id2 = spi_read32(spi, DEVICE_ID2);
 
     // TCAN4550 in ascii
     if ((id1 == 0x4E414354) && (id2 == 0x30353534))
@@ -323,7 +323,7 @@ static bool tcan4550_readIdentification(void)
 
 static bool tcan4550_setBitRate(uint32_t bitRate)
 {
-    spi_write32(NBTP, bitRate);
+    spi_write32(spi, NBTP, bitRate);
 
     return true;
 }
@@ -335,30 +335,30 @@ static void tcan4550_configure_mram()
     // clear MRAM to avoid risk of ECC errors 2kB = 512 words
     for (i = 0; i < MRAM_SIZE_WORDS; i++)
     {
-        spi_write32(MRAM_BASE + (i * 4), 0);
+        spi_write32(spi, MRAM_BASE + (i * 4), 0);
     }
 
     // configure tx-fifo
-    spi_write32(TXBC, TX_FIFO_START_ADDRESS + (TX_MSG_BOXES << 24));
+    spi_write32(spi, TXBC, TX_FIFO_START_ADDRESS + (TX_MSG_BOXES << 24));
 
     // configure rx-fifo
-    spi_write32(RXF0C, RX_FIFO_START_ADDRESS + (RX_MSG_BOXES << 16));
+    spi_write32(spi, RXF0C, RX_FIFO_START_ADDRESS + (RX_MSG_BOXES << 16));
 
     // 8-byte transmit size
-    spi_write32(TXESC, 0);
+    spi_write32(spi, TXESC, 0);
 
     // 8-byte receive size
-    spi_write32(RXESC, 0);
+    spi_write32(spi, RXESC, 0);
 }
 
 static void tcan4550_unlock()
 {
-    uint32_t val = spi_read32(CCCR);
+    uint32_t val = spi_read32(spi, CCCR);
 
     val |= (CCE + INIT);     // set CCE and INIT bits
     val &= ~((uint32_t)CSR); // clear CSR
 
-    spi_write32(CCCR, val);
+    spi_write32(spi, CCCR, val);
 }
 
 // convert a struct sk_buff to a tcan4550 msg and store in buffer
@@ -413,7 +413,7 @@ static void tcan4550_tx_work_handler(struct work_struct *ws)
     struct net_device_stats *stats = &((struct net_device *)priv->ndev)->stats;
 
     // check for free buffers
-    uint32_t txqfs = spi_read32(TXQFS);
+    uint32_t txqfs = spi_read32(spi, TXQFS);
     uint32_t freeBuffers = txqfs & 0x3F;
     uint32_t writeIndex = (txqfs >> 16) & 0x1F;
     uint32_t writeIndexTmp = writeIndex;
@@ -457,9 +457,9 @@ static void tcan4550_tx_work_handler(struct work_struct *ws)
 
     if(msgs > 0)
     {
-        spi_write_len(baseAddress, msgs, txBuffer);   // write message data
+        spi_write_len(spi, baseAddress, msgs, txBuffer);   // write message data
 
-        spi_write32(TXBAR, requestMask); // request buffer transmission
+        spi_write32(spi, TXBAR, requestMask); // request buffer transmission
     }
 }
 
@@ -469,7 +469,7 @@ bool tcan4550_recMsgs(struct net_device *dev)
     uint32_t i;
     struct net_device_stats *stats = &((struct net_device *)dev)->stats;
 
-    uint32_t rxf0s = spi_read32(RXF0S);
+    uint32_t rxf0s = spi_read32(spi, RXF0S);
 
     uint32_t fillLevel = (rxf0s & 0x7F);          // 0-64
     uint32_t getIndex = ((rxf0s >> 8) & 0x3F);    // 0-63
@@ -491,9 +491,9 @@ bool tcan4550_recMsgs(struct net_device *dev)
     
     uint32_t baseAddress = MRAM_BASE + RX_FIFO_START_ADDRESS + (getIndex * RX_SLOT_SIZE);
 
-    spi_read_len(baseAddress, msgsToGet, rxBuf);
+    spi_read_len(spi, baseAddress, msgsToGet, rxBuf);
 
-    spi_write32(RXF0A, (getIndex + msgsToGet - 1)); // acknowledge the last message we have read, that will automatically free all read
+    spi_write32(spi, RXF0A, (getIndex + msgsToGet - 1)); // acknowledge the last message we have read, that will automatically free all read
 
     for(i = 0; i < msgsToGet; i++)
     {
@@ -548,8 +548,8 @@ static irqreturn_t tcan4450_handleInterrupts(int irq, void *dev)
     struct net_device_stats *stats = &((struct net_device *)dev)->stats;
     uint32_t ir;
 
-    ir = spi_read32(IR);
-    spi_write32(IR, ir); // acknowledge interrupts
+    ir = spi_read32(spi, IR);
+    spi_write32(spi, IR, ir); // acknowledge interrupts
 
     //    if(ir == 0)
     //    {
@@ -595,21 +595,21 @@ static int tcan4550_setupInterrupts(struct net_device *dev)
 {
     int err;
 
-    spi_write32(IE, RF0N + TFE + BO + EW + EP); // rx fifo 0 new message + tx fifo empty + bus off + warning + error passive
+    spi_write32(spi, IE, RF0N + TFE + BO + EW + EP); // rx fifo 0 new message + tx fifo empty + bus off + warning + error passive
 
-    spi_write32(ILE, 0x1); // enable interrupt line 1
+    spi_write32(spi, ILE, 0x1); // enable interrupt line 1
 
     // mask all spi errors
-    spi_write32(SPI_MASK, 0xFFFFFFFF);
+    spi_write32(spi, SPI_MASK, 0xFFFFFFFF);
 
     // clear spi status register
-    spi_write32(STATUS, 0xFFFFFFFF);
+    spi_write32(spi, STATUS, 0xFFFFFFFF);
 
     // clear interrupts
-    spi_write32(INTERRUPT_FLAGS, 0xFFFFFFFF);
+    spi_write32(spi, INTERRUPT_FLAGS, 0xFFFFFFFF);
 
     // interrupt enables
-    spi_write32(INTERRUPT_ENABLE, 0);
+    spi_write32(spi, INTERRUPT_ENABLE, 0);
 
     // as SPI is slow, run irq in a kernel thread
     err = request_threaded_irq(spi->irq, NULL, tcan4450_handleInterrupts, IRQF_ONESHOT, dev->name, dev);
