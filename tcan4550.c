@@ -9,7 +9,6 @@
 #include <linux/module.h>
 #include <linux/netdevice.h>
 #include <linux/of.h>
-#include <linux/phy/phy.h>
 
 #include <linux/gpio/consumer.h>
 #include <linux/spi/spi.h>
@@ -561,11 +560,7 @@ static irqreturn_t tcan4450_handleInterrupts(int irq, void *dev)
     // Tx fifo empty
     if (ir & TFE)
     {
-        //        if(netif_tx_queue_stopped(dev))
-        {
-            //netdev_err(dev, "waking queue\n");
-            netif_wake_queue(dev);
-        }
+        netif_wake_queue(dev);
     }
 
     if (ir & BO)
@@ -752,8 +747,6 @@ static netdev_tx_t t_can_start_xmit(struct sk_buff *skb,
         netif_stop_queue(dev);
 
         spin_unlock_irqrestore(&mLock, flags);
-
-        //netdev_err(dev, "stopping queue\n");
 
         queue_work(priv->wq, &priv->tx_work);
 
