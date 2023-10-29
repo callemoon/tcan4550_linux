@@ -427,8 +427,8 @@ static void tcan4550_tx_work_handler(struct work_struct *ws)
 
     spin_lock_irqsave(&mLock, flags);
 
-    // build an spi message consisting of up to 16 CAN messges
-    while((priv->head != priv->tail) && (msgs < freeBuffers) && (writeIndexTmp < TX_MSG_BOXES))
+    // build an spi message consisting of several can msgs
+    while((priv->head != priv->tail) && (msgs < freeBuffers) && (writeIndexTmp < TX_MSG_BOXES) && (msgs < MAX_SPI_MESSAGES))
     {
         uint32_t len;
 
