@@ -78,7 +78,7 @@ const static uint32_t RX_FIFO_START_ADDRESS = 0x200;
 
 const static uint32_t MRAM_BASE = 0x8000;
 
-#define MAX_MESSAGES    16  // Max CAN messages in an SPI pacakge
+#define MAX_SPI_MESSAGES    16  // Max CAN messages in an SPI pacakge
 #define MAX_BURST_RX_PACKAGES   4
 
 #define TX_BUFFER_SIZE 15+1 // one slot is used to keep track of empty queue
@@ -140,7 +140,10 @@ static const struct can_bittiming_const tcan_bittiming_const = {
     .brp_inc = 1,
 };
 
-static int tcan4550_spi_trans(int len, unsigned char *rxBuf, unsigned char *txBuf)
+/*------------------------------------------------------------*/
+/* SPI helper functions                                       */
+/*------------------------------------------------------------*/
+static int spi_trans(struct spi_device *_spi, int len, unsigned char *rxBuf, unsigned char *txBuf)
 {
     //    struct tcan4550_priv *priv;
     //    priv = spi_get_drvdata(spi);
@@ -153,9 +156,9 @@ static int tcan4550_spi_trans(int len, unsigned char *rxBuf, unsigned char *txBu
     struct spi_message m;
     int ret;
 
-    if (spi == 0)
+    if (_spi == 0)
     {
-        return 0;
+        return -EINVAL;
     }
 
     spi_message_init(&m);
@@ -163,10 +166,10 @@ static int tcan4550_spi_trans(int len, unsigned char *rxBuf, unsigned char *txBu
 
     mutex_lock(&spi_lock);
 
-    ret = spi_sync(spi, &m);
+    ret = spi_sync(_spi, &m);
     if (ret)
     {
-        dev_err(&spi->dev, "spi transfer failed: ret = %d\n", ret);
+        dev_err(&_spi->dev, "spi transfer failed: ret = %d\n", ret);
     }
 
     mutex_unlock(&spi_lock);
@@ -186,20 +189,20 @@ static uint32_t spi_read32(uint32_t address)
     txBuf[2] = address & 0xFF;
     txBuf[3] = 1;
 
-    ret = tcan4550_spi_trans(8, rxBuf, txBuf);
+    ret = tcan4550_spi_trans(spi, 8, rxBuf, txBuf);
 
     return (rxBuf[4] << 24) + (rxBuf[5] << 16) + (rxBuf[6] << 8) + rxBuf[7];
 }
 
 static int spi_read_len(uint32_t address, int32_t msgs, uint32_t *data)
 {
-    unsigned char txBuf[4+(MAX_MESSAGES*16)];
-    unsigned char rxBuf[4+(MAX_MESSAGES*16)];
+    unsigned char txBuf[4+(MAX_SPI_MESSAGES*16)];
+    unsigned char rxBuf[4+(MAX_SPI_MESSAGES*16)];
 
     int ret;
-    int i;
+    uint32_t i;
 
-    if(msgs > MAX_MESSAGES)
+    if(msgs > MAX_SPI_MESSAGES)
     {
         return 0;
     }
@@ -209,7 +212,7 @@ static int spi_read_len(uint32_t address, int32_t msgs, uint32_t *data)
     txBuf[2] = address & 0xFF;
     txBuf[3] = msgs*4;
 
-    ret = tcan4550_spi_trans(4 + (msgs * 16), rxBuf, txBuf);
+    ret = spi_trans(4 + (msgs * 16), rxBuf, txBuf);
 
     for(i = 0; i < (msgs*4); i++)
     {
@@ -238,19 +241,19 @@ static int spi_write32(uint32_t address, uint32_t data)
     txBuf[6] = (data >> 8) & 0xFF;
     txBuf[7] = data & 0xFF;
 
-    ret = tcan4550_spi_trans(8, rxBuf, txBuf);
+    ret = spi_trans(spi, 8, rxBuf, txBuf);
 
     return ret;
 }
 
 static int spi_write_len(uint32_t address, int32_t msgs, uint32_t *data)
 {
-    unsigned char txBuf[4+(MAX_MESSAGES*16)];
-    unsigned char rxBuf[4+(MAX_MESSAGES*16)];
-    int i;
+    unsigned char txBuf[4+(MAX_SPI_MESSAGES*16)];
+    unsigned char rxBuf[4+(MAX_SPI_MESSAGES*16)];
+    uint32_t i;
     int ret;
 
-    if(msgs > MAX_MESSAGES)
+    if(msgs > MAX_SPI_MESSAGES)
     {
         return 0;
     }
@@ -268,11 +271,14 @@ static int spi_write_len(uint32_t address, int32_t msgs, uint32_t *data)
         txBuf[7 + (i*4)] = (data[i] & 0xFF);
     }
 
-    ret = tcan4550_spi_trans(4+(msgs*16), rxBuf, txBuf);
+    ret = spi_trans(spi, 4+(msgs*16), rxBuf, txBuf);
 
     return ret;
 }
 
+/*------------------------------------------------------------*/
+/* TCAN4550 functions                                         */
+/*------------------------------------------------------------*/
 static void tcan4550_set_standby_mode(void)
 {
     uint32_t val;
