@@ -111,8 +111,8 @@ struct tcan4550_priv
     struct work_struct tx_work;
 
     struct sk_buff *tx_skb[TX_BUFFER_SIZE];
-    static int head = 0;
-    static int tail = 0;
+    int head = 0;
+    int tail = 0;
 };
 
 static struct spi_device *spi = 0; // global spi handle
