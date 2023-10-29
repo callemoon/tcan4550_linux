@@ -189,7 +189,7 @@ static uint32_t spi_read32(uint32_t address)
     txBuf[2] = address & 0xFF;
     txBuf[3] = 1;
 
-    ret = tcan4550_spi_trans(spi, 8, rxBuf, txBuf);
+    ret = spi_trans(spi, 8, rxBuf, txBuf);
 
     return (rxBuf[4] << 24) + (rxBuf[5] << 16) + (rxBuf[6] << 8) + rxBuf[7];
 }
