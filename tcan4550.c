@@ -196,7 +196,7 @@ static int spi_read_msgs(struct spi_device *_spi, uint32_t address, int32_t msgs
 
     if(msgs > MAX_BURST_TX_MESSAGES)
     {
-        return 0;
+        return -EINVAL;
     }
 
     txBuf[0] = 0x41;
@@ -247,7 +247,7 @@ static int spi_write_msgs(struct spi_device *_spi, uint32_t address, int32_t msg
 
     if(msgs > MAX_BURST_TX_MESSAGES)
     {
-        return 0;
+       return -EINVAL;
     }
 
     txBuf[0] = 0x61;
