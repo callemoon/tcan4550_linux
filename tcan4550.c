@@ -129,8 +129,8 @@ static bool tcan4550_recMsgs(struct net_device *dev);
 // SPI function headers
 static uint32_t spi_read32(struct spi_device *_spi, uint32_t address);
 static int spi_write32(struct spi_device *_spi, uint32_t address, uint32_t data);
-static int spi_write_len(struct spi_device *_spi, uint32_t address, int32_t msgs, uint32_t *data);
-static int spi_read_len(struct spi_device *_spi, uint32_t address, int32_t msgs, uint32_t *data);
+static int spi_write_msgs(struct spi_device *_spi, uint32_t address, int32_t msgs, uint32_t *data);
+static int spi_read_msgs(struct spi_device *_spi, uint32_t address, int32_t msgs, uint32_t *data);
 
 /*------------------------------------------------------------*/
 /* SPI helper functions                                       */
@@ -186,7 +186,7 @@ static uint32_t spi_read32(struct spi_device *_spi, uint32_t address)
     return (rxBuf[4] << 24) + (rxBuf[5] << 16) + (rxBuf[6] << 8) + rxBuf[7];
 }
 
-static int spi_read_len(struct spi_device *_spi, uint32_t address, int32_t msgs, uint32_t *data)
+static int spi_read_msgs(struct spi_device *_spi, uint32_t address, int32_t msgs, uint32_t *data)
 {
     unsigned char txBuf[4+(MAX_BURST_TX_MESSAGES*16)];
     unsigned char rxBuf[4+(MAX_BURST_TX_MESSAGES*16)];
@@ -238,7 +238,7 @@ static int spi_write32(struct spi_device *_spi, uint32_t address, uint32_t data)
     return ret;
 }
 
-static int spi_write_len(struct spi_device *_spi, uint32_t address, int32_t msgs, uint32_t *data)
+static int spi_write_msgs(struct spi_device *_spi, uint32_t address, int32_t msgs, uint32_t *data)
 {
     unsigned char txBuf[4+(MAX_BURST_TX_MESSAGES*16)];
     unsigned char rxBuf[4+(MAX_BURST_TX_MESSAGES*16)];
@@ -454,7 +454,7 @@ static void tcan4550_tx_work_handler(struct work_struct *ws)
 
     if(msgs > 0)
     {
-        spi_write_len(spi, baseAddress, msgs, txBuffer);   // write message data
+        spi_write_msgs(spi, baseAddress, msgs, txBuffer);   // write message data
 
         spi_write32(spi, TXBAR, requestMask); // request buffer transmission
     }
@@ -481,15 +481,15 @@ bool tcan4550_recMsgs(struct net_device *dev)
         msgsToGet = (RX_MSG_BOXES - getIndex);
     }
 
-    // do not read too many packages in one go as we also need to ack rx packages to give room for new rx and perform tx
+    // do not read too many packages at once as we also need to ack rx packages to give room for new rx and perform tx
     if(msgsToGet > MAX_BURST_RX_MESSAGES)
     {
         msgsToGet = MAX_BURST_RX_MESSAGES;
     }
     
-    spi_read_len(spi, baseAddress, msgsToGet, rxBuf);
+    spi_read_msgs(spi, baseAddress, msgsToGet, rxBuf);
 
-    spi_write32(spi, RXF0A, (getIndex + msgsToGet - 1)); // acknowledge the last message we have read, that will automatically free all read
+    spi_write32(spi, RXF0A, (getIndex + msgsToGet - 1)); // acknowledge the last message we have read, that will automatically free all messages read
 
     for(i = 0; i < msgsToGet; i++)
     {
@@ -537,7 +537,7 @@ bool tcan4550_recMsgs(struct net_device *dev)
     return false;
 }
 
-// main interrupt handler - run as an irq thread
+// interrupt handler - run as an irq thread
 static irqreturn_t tcan4450_handleInterrupts(int irq, void *dev)
 {
     struct tcan4550_priv *priv = netdev_priv(dev);
