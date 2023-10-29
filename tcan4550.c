@@ -850,7 +850,7 @@ exit_free:
     return err;
 }
 
-#if LINUX_VERSION_CODE <= KERNEL_VERSION(6,0,0)
+#if LINUX_VERSION_CODE <= KERNEL_VERSION(5,18,0)
 int tcan_remove(struct spi_device *spi)
 #else
 void tcan_remove(struct spi_device *spi)
