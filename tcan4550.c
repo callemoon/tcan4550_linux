@@ -433,7 +433,7 @@ static void tcan4550_tx_work_handler(struct work_struct *ws)
     }
 
     // Make sure TX buffer does not wrap around
-    if((writewriteIndexTmp + msgsToTransmit) > TX_MSG_BOXES)
+    if((writeIndexTmp + msgsToTransmit) > TX_MSG_BOXES)
     {
         msgsToTransmit = (TX_MSG_BOXES - writewriteIndexTmp);
     }
