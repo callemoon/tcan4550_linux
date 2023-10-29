@@ -419,7 +419,7 @@ static void tcan4550_tx_work_handler(struct work_struct *ws)
     uint32_t txBuffer[MAX_SPI_MESSAGES*4];
     uint32_t requestMask = 0;
 
-    int msgs = 0;
+    uint32_t msgs = 0;
 
     uint32_t baseAddress = MRAM_BASE + TX_FIFO_START_ADDRESS + (writeIndex * TX_SLOT_SIZE);
 
@@ -459,7 +459,6 @@ static void tcan4550_tx_work_handler(struct work_struct *ws)
 
         spi_write32(TXBAR, requestMask); // request buffer transmission
     }
-
 }
 
 bool tcan4550_recMsgs(struct net_device *dev)
@@ -476,7 +475,7 @@ bool tcan4550_recMsgs(struct net_device *dev)
 
     uint32_t msgsToGet = fillLevel;
     
-    // after wrap around of rx buffer we need a new spi request
+    // stop if hw rx buffer wraps around, we need to send the reset in a separate spi package
     if(msgsToGet > (RX_MSG_BOXES - getIndex))
     {
         msgsToGet = (RX_MSG_BOXES - getIndex);
@@ -530,7 +529,7 @@ bool tcan4550_recMsgs(struct net_device *dev)
             cf->data[6] = (data[3] >> 16) & 0xFF;
             cf->data[7] = (data[3] >> 24) & 0xFF;
 
-            netif_rx(skb);
+            netif_rx(skb);  // Send data to linux networking subsystem
 
             stats->rx_packets++;
             stats->rx_bytes += cf->len;
@@ -574,7 +573,7 @@ static irqreturn_t tcan4450_handleInterrupts(int irq, void *dev)
     if (ir & BO)
     {
         priv->can.can_stats.bus_off++;
-        can_bus_off(dev);
+        can_bus_off(dev);   // Signal to Linux networking subsystem that we are bus off
     }
 
     if (ir & EW)
@@ -640,10 +639,12 @@ void tcan4550_hwReset(void)
     usleep_range(700, 1000); // we need to wait at least 700us for chip to become ready
 }
 
+// initialize tcan4550 hardware
 static bool tcan4550_init(struct net_device *dev, uint32_t bitRateReg)
 {
     tcan4550_hwReset();
 
+    // check that the tcan4550 chip is available, try two times before giving up
     if (!tcan4550_readIdentification())
     {
         if (!tcan4550_readIdentification())
@@ -666,6 +667,7 @@ static bool tcan4550_init(struct net_device *dev, uint32_t bitRateReg)
         return false;
     }
 
+    // now chip is ready to go
     tcan4550_set_normal_mode();
 
     return true;
