@@ -128,12 +128,12 @@ static bool tcan4550_readIdentification(void);
 static bool tcan4550_setBitRate(uint32_t bitRate);
 static int tcan4550_setupInterrupts(struct net_device *dev);
 static void tcan4550_hwReset(void);
-void tcan4550_setupIo(struct device *dev);
+static void tcan4550_setupIo(struct device *dev);
 static irqreturn_t tcan4450_handleInterrupts(int irq, void *dev);
-void tcan4550_composeMessage(struct sk_buff *skb, uint32_t *buffer);
+static void tcan4550_composeMessage(struct sk_buff *skb, uint32_t *buffer);
 
 static void tcan4550_tx_work_handler(struct work_struct *ws);
-bool tcan4550_recMsgs(struct net_device *dev);
+static bool tcan4550_recMsgs(struct net_device *dev);
 
 // spi function headers
 static uint32_t spi_read32(struct spi_device *_spi, uint32_t address);
