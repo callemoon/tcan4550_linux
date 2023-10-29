@@ -25,6 +25,7 @@
 
 #include <linux/gpio.h>
 #include <linux/spinlock.h>
+#include <linux/version.h>
 
 #include "tcan4550.h"
 
