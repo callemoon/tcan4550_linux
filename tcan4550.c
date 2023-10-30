@@ -116,8 +116,8 @@ static void tcan4550_unlock(struct spi_device *spi);
 static bool tcan4550_readIdentification(struct spi_device *spi);
 static bool tcan4550_setBitRate(struct spi_device *spi, uint32_t bitRate);
 static int tcan4550_setupInterrupts(struct net_device *dev);
-static void tcan4550_hwReset(struct device *dev);
-static void tcan4550_setupIo(struct device *dev);
+static void tcan4550_hwReset(struct net_device *dev);
+static void tcan4550_setupIo(struct net_device *dev);
 static void tcan4550_composeMessage(struct sk_buff *skb, uint32_t *buffer);
 
 static irqreturn_t tcan4450_handleInterrupts(int irq, void *dev);
@@ -615,7 +615,7 @@ static int tcan4550_setupInterrupts(struct net_device *dev)
     return 0;
 }
 
-void tcan4550_setupIo(struct device *dev)
+void tcan4550_setupIo(struct net_device *dev)
 {
     struct tcan4550_priv *priv = netdev_priv(dev);
 
@@ -628,7 +628,7 @@ void tcan4550_setupIo(struct device *dev)
     }
 }
 
-void tcan4550_hwReset(struct device *dev)
+void tcan4550_hwReset(struct net_device *dev)
 {
     struct tcan4550_priv *priv = netdev_priv(dev);
 
