@@ -392,7 +392,7 @@ static void tcan4550_tx_work_handler(struct work_struct *ws)
 
     struct net_device_stats *stats = &(priv->ndev->stats);
 
-    uint32_t txqfs = spi_read32(spi, TXQFS);
+    uint32_t txqfs = spi_read32(priv->spi, TXQFS);
     uint32_t freeBuffers = txqfs & 0x3F;
     uint32_t writeIndex = (txqfs >> 16) & 0x1F;
     uint32_t writeIndexTmp = writeIndex;
@@ -449,9 +449,9 @@ static void tcan4550_tx_work_handler(struct work_struct *ws)
 
     if(msgs > 0)
     {
-        spi_write_msgs(spi, baseAddress, msgs, txBuffer);   // write message data
+        spi_write_msgs(priv->spi, baseAddress, msgs, txBuffer);   // write message data
 
-        spi_write32(spi, TXBAR, requestMask); // request buffer transmission
+        spi_write32(priv->spi, TXBAR, requestMask); // request buffer transmission
     }
 }
 
