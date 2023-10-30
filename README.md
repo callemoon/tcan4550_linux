@@ -27,12 +27,12 @@ Install can-utils with sudo apt-get install can-utils
 To generate bus load use cangen can0 -g0 (g0 means no gap between messages)  
 To measure busload use canbusload can0@1000000  
 
-TX ~95%@1000kbit/s  
-RX >60%@1000kbit/s  
+TX >70%@1000kbit/s  
+RX >70%@1000kbit/s  
 
 ## Limitations
 Does not support CAN FD  
-Does not support bus off or bus warning  
+Does not support bus off recovery
 Does not support suspend/resume
 
 

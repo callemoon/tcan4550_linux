@@ -1,5 +1,5 @@
 /*
- * Device tree overlay for tcan4550 on spi0.0
+ * Device tree overlay for ti,tcan4550 on spi0.0 on Raspberry Pi 4
  */
 
 /dts-v1/;
