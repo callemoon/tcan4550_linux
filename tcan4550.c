@@ -468,7 +468,6 @@ bool tcan4550_recMsgs(struct net_device *dev)
 
     uint32_t fillLevel = (rxf0s & 0x7F);          // 0-64
     uint32_t getIndex = ((rxf0s >> 8) & 0x3F);    // 0-63
-    // uint32_t putIndex = (rxf0s >> 16) & 0xFF;
 
     uint32_t msgsToGet = fillLevel;
     uint32_t baseAddress = MRAM_BASE + RX_FIFO_START_ADDRESS + (getIndex * RX_SLOT_SIZE);
