@@ -115,10 +115,11 @@ static void tcan4550_unlock(struct spi_device *spi);
 static bool tcan4550_readIdentification(struct spi_device *spi);
 static bool tcan4550_setBitRate(struct spi_device *spi, uint32_t bitRate);
 static int tcan4550_setupInterrupts(struct net_device *dev);
-static void tcan4550_hwReset(struct spi_device *spi);
+static void tcan4550_hwReset();
 static void tcan4550_setupIo(struct device *dev);
-static irqreturn_t tcan4450_handleInterrupts(int irq, void *dev);
 static void tcan4550_composeMessage(struct sk_buff *skb, uint32_t *buffer);
+
+static irqreturn_t tcan4450_handleInterrupts(int irq, void *dev);
 
 static void tcan4550_tx_work_handler(struct work_struct *ws);
 static bool tcan4550_recMsgs(struct net_device *dev);
@@ -638,7 +639,7 @@ static bool tcan4550_init(struct net_device *dev, uint32_t bitRateReg)
 {
     struct tcan4550_priv *priv = netdev_priv(dev);
  
-    tcan4550_hwReset(priv->spi);
+    tcan4550_hwReset();
 
     // check that the tcan4550 chip is available, try two times before giving up
     if (!tcan4550_readIdentification(priv->spi))
