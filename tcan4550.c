@@ -75,7 +75,7 @@ const static uint32_t MRAM_SIZE_WORDS = 512;
 #define TX_BUFFER_SIZE 16+1 // one slot is reserved to be able to keep track of full queue
 
 unsigned long flags;
-static DEFINE_SPINLOCK(mLock); // spinlock protecting tx_skb buffer
+static DEFINE_SPINLOCK(tx_skb_lock); // spinlock protecting tx_skb buffer
 static DEFINE_MUTEX(spi_lock); // mutex protecting SPI access
 
 static const struct can_bittiming_const tcan4550_bittiming_const = {
@@ -418,7 +418,7 @@ static void tcan4550_tx_work_handler(struct work_struct *ws)
         msgsToTransmit = (TX_MSG_BOXES - writeIndexTmp);
     }
 
-    spin_lock_irqsave(&mLock, flags);
+    spin_lock_irqsave(&tx_skb_lock, flags);
 
     // build an SPI message consisting of several CAN msgs
     while((priv->tx_head != priv->tx_tail) && (msgs < msgsToTransmit))
@@ -447,7 +447,7 @@ static void tcan4550_tx_work_handler(struct work_struct *ws)
         stats->tx_bytes += len;
     }
 
-    spin_unlock_irqrestore(&mLock, flags);
+    spin_unlock_irqrestore(&tx_skb_lock, flags);
 
     if(msgs > 0)
     {
@@ -729,7 +729,7 @@ static netdev_tx_t tcan_start_xmit(struct sk_buff *skb,
         return NETDEV_TX_OK;
     }
 
-    spin_lock_irqsave(&mLock, flags);
+    spin_lock_irqsave(&tx_skb_lock, flags);
 
     tmpHead = priv->tx_head;
     tmpHead++;
@@ -742,7 +742,7 @@ static netdev_tx_t tcan_start_xmit(struct sk_buff *skb,
     {
         netif_stop_queue(dev);
 
-        spin_unlock_irqrestore(&mLock, flags);
+        spin_unlock_irqrestore(&tx_skb_lock, flags);
 
         queue_work(priv->wq, &priv->tx_work);
 
@@ -752,7 +752,7 @@ static netdev_tx_t tcan_start_xmit(struct sk_buff *skb,
     priv->tx_skb_buf[priv->tx_head] = skb;
     priv->tx_head=tmpHead;
 
-    spin_unlock_irqrestore(&mLock, flags);
+    spin_unlock_irqrestore(&tx_skb_lock, flags);
 
     queue_work(priv->wq, &priv->tx_work);
 
