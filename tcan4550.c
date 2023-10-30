@@ -644,7 +644,7 @@ static bool tcan4550_init(struct net_device *dev, uint32_t bitRateReg)
 {
     struct tcan4550_priv *priv = netdev_priv(dev);
  
-    tcan4550_hwReset();
+    tcan4550_hwReset(dev);
 
     // check that the tcan4550 chip is available, try two times before giving up
     if (!tcan4550_readIdentification(priv->spi))
