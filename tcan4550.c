@@ -106,8 +106,6 @@ struct tcan4550_priv
     struct gpio_desc *reset_gpio;
 };
 
-
-
 // TCAN function headers
 static void tcan4550_set_normal_mode(struct spi_device *spi);
 static void tcan4550_set_standby_mode(struct spi_device *spi);
@@ -146,7 +144,7 @@ static int spi_transfer(struct spi_device *spi, int lenBytes, unsigned char *rxB
     struct spi_message m;
     int ret;
 
-    if (spi == 0)
+    if (spi == 0 || rxBuf == null || txBuf == null)
     {
         return -EINVAL;
     }
