@@ -17,8 +17,6 @@
 #include <linux/spinlock.h>
 #include <linux/version.h>
 
-#include "tcan4550.h"
-
 // TCAN4550 Registers
 const static uint32_t DEVICE_ID1 = 0x0;
 const static uint32_t DEVICE_ID2 = 0x4;
@@ -102,9 +100,9 @@ struct tcan4550_priv
     struct workqueue_struct *wq;
     struct work_struct tx_work;
 
-    struct sk_buff *tx_skb[TX_BUFFER_SIZE];
-    int head;
-    int tail;
+    struct sk_buff *tx_skb_buf[TX_BUFFER_SIZE];
+    int tx_head;
+    int tx_tail;
 };
 
 static struct spi_device *spi = 0;   // global spi handle. TODO remove.
@@ -424,13 +422,13 @@ static void tcan4550_tx_work_handler(struct work_struct *ws)
     spin_lock_irqsave(&mLock, flags);
 
     // build an SPI message consisting of several CAN msgs
-    while((priv->head != priv->tail) && (msgs < msgsToTransmit))
+    while((priv->tx_head != priv->tx_tail) && (msgs < msgsToTransmit))
     {
         uint32_t len;
 
-        tcan4550_composeMessage(priv->tx_skb[priv->tail], &txBuffer[msgs*4]);
+        tcan4550_composeMessage(priv->tx_skb_buf[priv->tx_tail], &txBuffer[msgs*4]);
 
-        can_put_echo_skb(priv->tx_skb[priv->tail], priv->ndev, 0, 0);
+        can_put_echo_skb(priv->tx_skb_buf[priv->tx_tail], priv->ndev, 0, 0);
         len = can_get_echo_skb(priv->ndev, 0, 0);
         can_free_echo_skb(priv->ndev, 0, 0);
 
@@ -439,10 +437,10 @@ static void tcan4550_tx_work_handler(struct work_struct *ws)
         msgs++;
         writeIndexTmp++;
 
-        priv->tail++;
-        if(priv->tail >= TX_BUFFER_SIZE)
+        priv->tx_tail++;
+        if(priv->tx_tail >= TX_BUFFER_SIZE)
         {
-            priv->tail = 0;
+            priv->tx_tail = 0;
         }
 
         // update stats
@@ -464,7 +462,7 @@ bool tcan4550_recMsgs(struct net_device *dev)
 {
     uint32_t rxBuf[MAX_BURST_RX_MESSAGES*4];
     uint32_t i;
-    struct net_device_stats *stats = &((struct net_device *)dev)->stats;
+    struct net_device_stats *stats = &(dev->stats);
 
     uint32_t rxf0s = spi_read32(spi, RXF0S);
 
@@ -696,8 +694,8 @@ static int tcan_open(struct net_device *dev)
         return -ENXIO;
     }
 
-    priv->head = 0;
-    priv->tail = 0;
+    priv->tx_head = 0;
+    priv->tx_tail = 0;
 
     netif_start_queue(dev);
 
@@ -719,7 +717,7 @@ static int tcan_close(struct net_device *dev)
 // Called from Linux network subsystem when we should send a message
 // Linux run network subsystem as a soft-irq so we are not allowed to sleep here
 // We will here copy frame to our sw tx buffer. If sw tx buffer is full, stop queue with netif_stop_queue.
-static netdev_tx_t t_can_start_xmit(struct sk_buff *skb,
+static netdev_tx_t tcan_start_xmit(struct sk_buff *skb,
                                     struct net_device *dev)
 {
     struct tcan4550_priv *priv;
@@ -735,14 +733,14 @@ static netdev_tx_t t_can_start_xmit(struct sk_buff *skb,
 
     spin_lock_irqsave(&mLock, flags);
 
-    tmpHead = priv->head;
+    tmpHead = priv->tx_head;
     tmpHead++;
     if(tmpHead >= TX_BUFFER_SIZE)
     {
         tmpHead = 0;
     }
     
-    if(tmpHead == priv->tail)
+    if(tmpHead == priv->tx_tail)
     {
         netif_stop_queue(dev);
 
@@ -753,8 +751,8 @@ static netdev_tx_t t_can_start_xmit(struct sk_buff *skb,
         return NETDEV_TX_BUSY;
     }
 
-    priv->tx_skb[priv->head] = skb;
-    priv->head=tmpHead;
+    priv->tx_skb_buf[priv->tx_head] = skb;
+    priv->tx_head=tmpHead;
 
     spin_unlock_irqrestore(&mLock, flags);
 
@@ -766,7 +764,7 @@ static netdev_tx_t t_can_start_xmit(struct sk_buff *skb,
 static const struct net_device_ops m_can_netdev_ops = {
     .ndo_open = tcan_open,
     .ndo_stop = tcan_close,
-    .ndo_start_xmit = t_can_start_xmit,
+    .ndo_start_xmit = tcan_start_xmit,
     .ndo_change_mtu = can_change_mtu,
 };
 
