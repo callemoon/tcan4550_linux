@@ -15,11 +15,11 @@ A device tree overlay is used to connect driver to SPI0 bus of Raspberry Pi. To 
 
 sudo dtc -@ -I dts -O dtb -o tcan4550-can0-overlay.dtbo tcan4550-can0-overlay.dts  
 
-To load and start driver run script: ./start_can  
+To load and start driver run script: ./start_can.sh  
 
-To stop and unload the driver run script: ./stop_can  
+To stop and unload the driver run script: ./stop_can.sh  
 
-Adjust bitrate by editing the start_can script  
+Adjust bitrate by editing the start_can.sh script  
 
 ## Performance test
 Install can-utils with sudo apt-get install can-utils  
@@ -31,8 +31,11 @@ TX >70%@1000kbit/s
 RX >70%@1000kbit/s  
 
 ## Limitations
-Does not support CAN FD  
-Does not support bus off recovery
-Does not support suspend/resume
+Does not support CAN FD   
+Does not support bus off recovery  
+Does not support suspend/resume  
+Does not support silent mode  
+
+
 
 

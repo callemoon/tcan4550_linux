@@ -30,6 +30,9 @@ const static uint32_t INTERRUPT_ENABLE = 0x0830;
 
 const static uint32_t CCCR = 0x1018;
 const static uint32_t NBTP = 0x101C;
+const static uint32_t IR = 0x1050;  // interrupt register
+const static uint32_t IE = 0x1054;  // interrupt enable
+const static uint32_t ILE = 0x105C; // interrupt line enable
 const static uint32_t RXF0C = 0x10A0;
 const static uint32_t RXF0S = 0x10A4;
 const static uint32_t RXF0A = 0x10A8;
@@ -38,10 +41,6 @@ const static uint32_t TXESC = 0x10C8;
 const static uint32_t RXESC = 0x10BC;
 const static uint32_t TXQFS = 0x10C4;
 const static uint32_t TXBAR = 0x10D0;
-
-const static uint32_t IR = 0x1050;  // interrupt register
-const static uint32_t IE = 0x1054;  // interrupt enable
-const static uint32_t ILE = 0x105C; // interrupt line enable
 
 const static uint32_t RF0N = (0x1UL << 0); // rx fifo 0 new data
 const static uint32_t TC = (0x1UL << 9);   // transmission complete
@@ -72,7 +71,7 @@ const static uint32_t MRAM_SIZE_WORDS = 512;
 #define MAX_BURST_TX_MESSAGES   16  // Max CAN messages in a SPI write
 #define MAX_BURST_RX_MESSAGES   8   // Max CAN messages in a SPI read
 
-#define TX_BUFFER_SIZE 16+1 // one slot is reserved to be able to keep track of full queue
+#define TX_BUFFER_SIZE 16+1 // size of tx-buffer used between Linux networking stack and SPI. One slot is reserved to be able to keep track of full queue.
 
 unsigned long flags;
 static DEFINE_SPINLOCK(tx_skb_lock); // spinlock protecting tx_skb buffer
@@ -789,7 +788,7 @@ static int tcan_probe(struct spi_device *spi)
         .value = 0
     };
 
-    ndev = alloc_candev(sizeof(struct tcan4550_priv), 16);
+    ndev = alloc_candev(sizeof(struct tcan4550_priv), 16);  // TODO: fix size
     if (!ndev)
     {
         return -ENOMEM;
