@@ -70,9 +70,9 @@ const static uint32_t MRAM_SIZE_WORDS = 512;
 
 // Buffer configuration
 #define MAX_BURST_TX_MESSAGES   8  // Max CAN messages in a SPI write
-#define MAX_BURST_RX_MESSAGES   4   // Max CAN messages in a SPI read
+#define MAX_BURST_RX_MESSAGES   8   // Max CAN messages in a SPI read
 
-#define TX_BUFFER_SIZE 15+1 // one slot is reserved to be able to keep track of full queue
+#define TX_BUFFER_SIZE 16+1 // one slot is reserved to be able to keep track of full queue
 
 unsigned long flags;
 static DEFINE_SPINLOCK(mLock); // spinlock protecting tx_skb buffer
@@ -394,7 +394,6 @@ static void tcan4550_tx_work_handler(struct work_struct *ws)
 
     struct net_device_stats *stats = &(priv->ndev->stats);
 
-    // check for free buffers
     uint32_t txqfs = spi_read32(spi, TXQFS);
     uint32_t freeBuffers = txqfs & 0x3F;
     uint32_t writeIndex = (txqfs >> 16) & 0x1F;
@@ -722,7 +721,7 @@ static netdev_tx_t tcan_start_xmit(struct sk_buff *skb,
     struct tcan4550_priv *priv;
     uint32_t tmpHead;
 
-    priv = netdev_priv(dev); // get the private
+    priv = netdev_priv(dev);
 
     // drop invalid can msgs
     if (can_dropped_invalid_skb(dev, skb))
