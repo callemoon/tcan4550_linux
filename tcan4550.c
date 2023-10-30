@@ -485,7 +485,7 @@ bool tcan4550_recMsgs(struct net_device *dev)
     
     spi_read_msgs(priv->spi, baseAddress, msgsToGet, rxBuf);
 
-    spi_write32((priv->spi, RXF0A, (getIndex + msgsToGet - 1)); // acknowledge the last message we have read, that will automatically free all messages read
+    spi_write32(priv->spi, RXF0A, (getIndex + msgsToGet - 1)); // acknowledge the last message we have read, that will automatically free all messages read
 
     for(i = 0; i < msgsToGet; i++)
     {
@@ -539,7 +539,7 @@ static irqreturn_t tcan4450_handleInterrupts(int irq, void *dev)
     struct tcan4550_priv *priv = netdev_priv(dev);
     uint32_t ir;
 
-    ir = spi_read32((priv->spi, IR);
+    ir = spi_read32(priv->spi, IR);
     spi_write32(spi, IR, ir); // acknowledge interrupts
 
     if(ir == 0)
@@ -586,21 +586,21 @@ static int tcan4550_setupInterrupts(struct net_device *dev)
     struct tcan4550_priv *priv = netdev_priv(dev);
     int err;
 
-    spi_write32((priv->spi, IE, RF0N + TFE + BO + EW + EP); // rx fifo 0 new message + tx fifo empty + bus off + warning + error passive
+    spi_write32(priv->spi, IE, RF0N + TFE + BO + EW + EP); // rx fifo 0 new message + tx fifo empty + bus off + warning + error passive
 
-    spi_write32((priv->spi, ILE, 0x1); // enable interrupt line 1
+    spi_write32(priv->spi, ILE, 0x1); // enable interrupt line 1
 
     // mask all spi errors
-    spi_write32((priv->spi, SPI_MASK, 0xFFFFFFFF);
+    spi_write32(priv->spi, SPI_MASK, 0xFFFFFFFF);
 
     // clear spi status register
-    spi_write32((priv->spi, STATUS, 0xFFFFFFFF);
+    spi_write32(priv->spi, STATUS, 0xFFFFFFFF);
 
     // clear interrupts
-    spi_write32((priv->spi, INTERRUPT_FLAGS, 0xFFFFFFFF);
+    spi_write32(priv->spi, INTERRUPT_FLAGS, 0xFFFFFFFF);
 
     // interrupt enables
-    spi_write32((priv->spi, INTERRUPT_ENABLE, 0);
+    spi_write32(priv->spi, INTERRUPT_ENABLE, 0);
 
     // start interrupt handler
     // as SPI is slow, run irq in a thread
