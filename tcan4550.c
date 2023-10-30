@@ -830,7 +830,7 @@ static int tcan_probe(struct spi_device *spi)
         goto exit_free;
     }
 
-    tcan4550_setupIo(&spi->dev);
+    tcan4550_setupIo(ndev);
 
     priv->wq = alloc_workqueue("tcan4550_wq", WQ_FREEZABLE | WQ_MEM_RECLAIM, 1);
     if (!priv->wq)
