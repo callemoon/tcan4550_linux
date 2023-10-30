@@ -540,7 +540,7 @@ static irqreturn_t tcan4450_handleInterrupts(int irq, void *dev)
     uint32_t ir;
 
     ir = spi_read32(priv->spi, IR);
-    spi_write32(spi, IR, ir); // acknowledge interrupts
+    spi_write32(priv->spi, IR, ir); // acknowledge interrupts
 
     if(ir == 0)
     {
