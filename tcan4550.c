@@ -619,10 +619,10 @@ void tcan4550_setupIo(struct net_device *dev)
 {
     struct tcan4550_priv *priv = netdev_priv(dev);
 
-    priv->reset_gpio = devm_gpiod_get_optional(dev, "reset", GPIOD_OUT_LOW); // get reset gpio from device-tree reset-gpio property, set to output low
+    priv->reset_gpio = devm_gpiod_get_optional(priv->dev, "reset", GPIOD_OUT_LOW); // get reset gpio from device-tree reset-gpio property, set to output low
     if (IS_ERR(priv->reset_gpio))
     {
-        dev_err(dev, "could not get reset gpio\n");
+        dev_err(priv->dev, "could not get reset gpio\n");
 
         priv->reset_gpio = NULL;
     }
