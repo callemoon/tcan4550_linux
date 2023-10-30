@@ -134,7 +134,7 @@ static int spi_read_msgs(struct spi_device *spi, uint32_t address, int32_t msgs,
 /*------------------------------------------------------------*/
 /* SPI helper functions                                       */
 /*------------------------------------------------------------*/
-static int spi_transfer(struct spi_device *_spi, int lenBytes, unsigned char *rxBuf, unsigned char *txBuf)
+static int spi_transfer(struct spi_device *spi, int lenBytes, unsigned char *rxBuf, unsigned char *txBuf)
 {
     struct spi_transfer t = {
         .tx_buf = txBuf,
@@ -145,7 +145,7 @@ static int spi_transfer(struct spi_device *_spi, int lenBytes, unsigned char *rx
     struct spi_message m;
     int ret;
 
-    if (_spi == 0)
+    if (spi == 0)
     {
         return -EINVAL;
     }
@@ -155,10 +155,10 @@ static int spi_transfer(struct spi_device *_spi, int lenBytes, unsigned char *rx
 
     mutex_lock(&spi_lock);
 
-    ret = spi_sync(_spi, &m);
+    ret = spi_sync(spi, &m);
     if (ret)
     {
-        dev_err(&_spi->dev, "spi transfer failed: ret = %d\n", ret);
+        dev_err(&spi->dev, "spi transfer failed: ret = %d\n", ret);
     }
 
     mutex_unlock(&spi_lock);
@@ -183,7 +183,7 @@ static uint32_t spi_read32(struct spi_device *spi, uint32_t address)
     return (rxBuf[4] << 24) + (rxBuf[5] << 16) + (rxBuf[6] << 8) + rxBuf[7];
 }
 
-static int spi_read_msgs(struct spi_device *_spi, uint32_t address, int32_t msgs, uint32_t *data)
+static int spi_read_msgs(struct spi_device *spi, uint32_t address, int32_t msgs, uint32_t *data)
 {
     unsigned char txBuf[4+(MAX_BURST_TX_MESSAGES*16)];
     unsigned char rxBuf[4+(MAX_BURST_TX_MESSAGES*16)];
@@ -201,7 +201,7 @@ static int spi_read_msgs(struct spi_device *_spi, uint32_t address, int32_t msgs
     txBuf[2] = address & 0xFF;
     txBuf[3] = msgs*4;
 
-    ret = spi_transfer(_spi, 4 + (msgs * 16), rxBuf, txBuf);
+    ret = spi_transfer(spi, 4 + (msgs * 16), rxBuf, txBuf);
 
     for(i = 0; i < (msgs*4); i++)
     {
