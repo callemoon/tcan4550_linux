@@ -125,6 +125,7 @@ static void tcan4550_tx_work_handler(struct work_struct *ws);
 static bool tcan4550_recMsgs(struct net_device *dev);
 
 // SPI function headers
+static int spi_transfer(struct spi_device *_spi, int lenBytes, unsigned char *rxBuf, unsigned char *txBuf);
 static uint32_t spi_read32(struct spi_device *_spi, uint32_t address);
 static int spi_write32(struct spi_device *_spi, uint32_t address, uint32_t data);
 static int spi_write_msgs(struct spi_device *_spi, uint32_t address, int32_t msgs, uint32_t *data);
@@ -133,14 +134,14 @@ static int spi_read_msgs(struct spi_device *_spi, uint32_t address, int32_t msgs
 /*------------------------------------------------------------*/
 /* SPI helper functions                                       */
 /*------------------------------------------------------------*/
-static int spi_trans(struct spi_device *_spi, int len, unsigned char *rxBuf, unsigned char *txBuf)
+static int spi_transfer(struct spi_device *_spi, int lenBytes, unsigned char *rxBuf, unsigned char *txBuf)
 {
     //    struct tcan4550_priv *priv;
     //    priv = spi_get_drvdata(spi);
     struct spi_transfer t = {
         .tx_buf = txBuf,
         .rx_buf = rxBuf,
-        .len = len,
+        .len = lenBytes,
         .cs_change = 0,
     };
     struct spi_message m;
@@ -179,7 +180,7 @@ static uint32_t spi_read32(struct spi_device *_spi, uint32_t address)
     txBuf[2] = address & 0xFF;
     txBuf[3] = 1;
 
-    ret = spi_trans(_spi, 8, rxBuf, txBuf);
+    ret = spi_transfer(_spi, 8, rxBuf, txBuf);
 
     return (rxBuf[4] << 24) + (rxBuf[5] << 16) + (rxBuf[6] << 8) + rxBuf[7];
 }
@@ -202,7 +203,7 @@ static int spi_read_msgs(struct spi_device *_spi, uint32_t address, int32_t msgs
     txBuf[2] = address & 0xFF;
     txBuf[3] = msgs*4;
 
-    ret = spi_trans(_spi, 4 + (msgs * 16), rxBuf, txBuf);
+    ret = spi_transfer(_spi, 4 + (msgs * 16), rxBuf, txBuf);
 
     for(i = 0; i < (msgs*4); i++)
     {
@@ -231,7 +232,7 @@ static int spi_write32(struct spi_device *_spi, uint32_t address, uint32_t data)
     txBuf[6] = (data >> 8) & 0xFF;
     txBuf[7] = data & 0xFF;
 
-    ret = spi_trans(_spi, 8, rxBuf, txBuf);
+    ret = spi_transfer(_spi, 8, rxBuf, txBuf);
 
     return ret;
 }
@@ -261,7 +262,7 @@ static int spi_write_msgs(struct spi_device *_spi, uint32_t address, int32_t msg
         txBuf[7 + (i*4)] = (data[i] & 0xFF);
     }
 
-    ret = spi_trans(_spi, 4+(msgs*16), rxBuf, txBuf);
+    ret = spi_transfer(_spi, 4+(msgs*16), rxBuf, txBuf);
 
     return ret;
 }
@@ -559,17 +560,20 @@ static irqreturn_t tcan4450_handleInterrupts(int irq, void *dev)
         netif_wake_queue(dev);
     }
 
+    // bus off
     if (ir & BO)
     {
         priv->can.can_stats.bus_off++;
         can_bus_off(dev);   // Signal to Linux networking subsystem that we are bus off
     }
 
+    // error warning
     if (ir & EW)
     {
         priv->can.can_stats.error_warning++;
     }
 
+    // error passive
     if (ir & EP)
     {
         priv->can.can_stats.error_passive++;
@@ -787,7 +791,7 @@ static int tcan_probe(struct spi_device *_spi)
         return -ENOMEM;
     }
 
-    priv = netdev_priv(ndev); // get the private
+    priv = netdev_priv(ndev);
     spi_set_drvdata(spi, ndev);
     SET_NETDEV_DEV(ndev, &spi->dev);
 
@@ -801,7 +805,7 @@ static int tcan_probe(struct spi_device *_spi)
     ndev->flags |= IFF_ECHO;
 
     spi->bits_per_word = 8;
-    spi->max_speed_hz = 18000000;
+    spi->max_speed_hz = 18000000;   // TODO: read from devicetree
     spi->cs_setup = delay;
     spi->cs_hold = delay;
     spi->cs_inactive = delay;
