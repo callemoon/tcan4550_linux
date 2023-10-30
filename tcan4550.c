@@ -144,7 +144,7 @@ static int spi_transfer(struct spi_device *spi, int lenBytes, unsigned char *rxB
     struct spi_message m;
     int ret;
 
-    if (spi == 0 || rxBuf == null || txBuf == null)
+    if (spi == 0 || rxBuf == 0 || txBuf == 0)
     {
         return -EINVAL;
     }
