@@ -69,7 +69,7 @@ const static uint32_t MRAM_BASE = 0x8000;
 const static uint32_t MRAM_SIZE_WORDS = 512;
 
 // Buffer configuration
-#define MAX_BURST_TX_MESSAGES   8  // Max CAN messages in a SPI write
+#define MAX_BURST_TX_MESSAGES   16  // Max CAN messages in a SPI write
 #define MAX_BURST_RX_MESSAGES   8   // Max CAN messages in a SPI read
 
 #define TX_BUFFER_SIZE 16+1 // one slot is reserved to be able to keep track of full queue
@@ -105,18 +105,17 @@ struct tcan4550_priv
     int tx_tail;
 };
 
-static struct spi_device *spi = 0;   // global spi handle. TODO remove.
 static struct gpio_desc *reset_gpio; // global gpio handle. TODO remove.
 
 // TCAN function headers
-static void tcan4550_set_normal_mode(void);
-static void tcan4550_set_standby_mode(void);
-static void tcan4550_configure_mram(void);
-static void tcan4550_unlock(void);
-static bool tcan4550_readIdentification(void);
-static bool tcan4550_setBitRate(uint32_t bitRate);
+static void tcan4550_set_normal_mode(struct spi_device *spi);
+static void tcan4550_set_standby_mode(struct spi_device *spi);
+static void tcan4550_configure_mram(struct spi_device *spi);
+static void tcan4550_unlock(struct spi_device *spi);
+static bool tcan4550_readIdentification(struct spi_device *spi);
+static bool tcan4550_setBitRate(struct spi_device *spi, uint32_t bitRate);
 static int tcan4550_setupInterrupts(struct net_device *dev);
-static void tcan4550_hwReset(void);
+static void tcan4550_hwReset(struct spi_device *spi);
 static void tcan4550_setupIo(struct device *dev);
 static irqreturn_t tcan4450_handleInterrupts(int irq, void *dev);
 static void tcan4550_composeMessage(struct sk_buff *skb, uint32_t *buffer);
@@ -136,8 +135,6 @@ static int spi_read_msgs(struct spi_device *_spi, uint32_t address, int32_t msgs
 /*------------------------------------------------------------*/
 static int spi_transfer(struct spi_device *_spi, int lenBytes, unsigned char *rxBuf, unsigned char *txBuf)
 {
-    //    struct tcan4550_priv *priv;
-    //    priv = spi_get_drvdata(spi);
     struct spi_transfer t = {
         .tx_buf = txBuf,
         .rx_buf = rxBuf,
@@ -216,7 +213,7 @@ static int spi_read_msgs(struct spi_device *_spi, uint32_t address, int32_t msgs
     return ret;
 }
 
-static int spi_write32(struct spi_device *_spi, uint32_t address, uint32_t data)
+static int spi_write32(struct spi_device *spi, uint32_t address, uint32_t data)
 {
     unsigned char txBuf[8];
     unsigned char rxBuf[8];
@@ -232,12 +229,12 @@ static int spi_write32(struct spi_device *_spi, uint32_t address, uint32_t data)
     txBuf[6] = (data >> 8) & 0xFF;
     txBuf[7] = data & 0xFF;
 
-    ret = spi_transfer(_spi, 8, rxBuf, txBuf);
+    ret = spi_transfer(spi, 8, rxBuf, txBuf);
 
     return ret;
 }
 
-static int spi_write_msgs(struct spi_device *_spi, uint32_t address, int32_t msgs, uint32_t *data)
+static int spi_write_msgs(struct spi_device *spi, uint32_t address, int32_t msgs, uint32_t *data)
 {
     unsigned char txBuf[4+(MAX_BURST_TX_MESSAGES*16)];
     unsigned char rxBuf[4+(MAX_BURST_TX_MESSAGES*16)];
@@ -262,7 +259,7 @@ static int spi_write_msgs(struct spi_device *_spi, uint32_t address, int32_t msg
         txBuf[7 + (i*4)] = (data[i] & 0xFF);
     }
 
-    ret = spi_transfer(_spi, 4+(msgs*16), rxBuf, txBuf);
+    ret = spi_transfer(spi, 4+(msgs*16), rxBuf, txBuf);
 
     return ret;
 }
@@ -270,7 +267,7 @@ static int spi_write_msgs(struct spi_device *_spi, uint32_t address, int32_t msg
 /*------------------------------------------------------------*/
 /* TCAN4550 functions                                         */
 /*------------------------------------------------------------*/
-static void tcan4550_set_standby_mode(void)
+static void tcan4550_set_standby_mode(struct spi_device *spi)
 {
     uint32_t val;
 
@@ -282,7 +279,7 @@ static void tcan4550_set_standby_mode(void)
     spi_write32(spi, MODES_OF_OPERATION, val);
 }
 
-static void tcan4550_set_normal_mode(void)
+static void tcan4550_set_normal_mode(struct spi_device *spi)
 {
     uint32_t val;
 
@@ -294,7 +291,7 @@ static void tcan4550_set_normal_mode(void)
     spi_write32(spi, MODES_OF_OPERATION, val);
 }
 
-static bool tcan4550_readIdentification(void)
+static bool tcan4550_readIdentification(struct spi_device *spi)
 {
     uint32_t id1;
     uint32_t id2;
@@ -311,14 +308,14 @@ static bool tcan4550_readIdentification(void)
     return false;
 }
 
-static bool tcan4550_setBitRate(uint32_t bitRate)
+static bool tcan4550_setBitRate(struct spi_device *spi, uint32_t bitRate)
 {
     spi_write32(spi, NBTP, bitRate);
 
     return true;
 }
 
-static void tcan4550_configure_mram()
+static void tcan4550_configure_mram(struct spi_device *spi)
 {
     uint32_t i;
 
@@ -341,7 +338,7 @@ static void tcan4550_configure_mram()
     spi_write32(spi, RXESC, 0);
 }
 
-static void tcan4550_unlock()
+static void tcan4550_unlock(struct spi_device *spi)
 {
     uint32_t val = spi_read32(spi, CCCR);
 
@@ -636,12 +633,14 @@ void tcan4550_hwReset(void)
 // initialize tcan4550 hardware
 static bool tcan4550_init(struct net_device *dev, uint32_t bitRateReg)
 {
-    tcan4550_hwReset();
+    struct tcan4550_priv *priv = netdev_priv(dev);
+ 
+    tcan4550_hwReset(priv->spi);
 
     // check that the tcan4550 chip is available, try two times before giving up
-    if (!tcan4550_readIdentification())
+    if (!tcan4550_readIdentification(priv->spi))
     {
-        if (!tcan4550_readIdentification())
+        if (!tcan4550_readIdentification(priv->spi))
         {
             netdev_err(dev, "failed to read TCAN4550 identification\n");
 
@@ -649,10 +648,10 @@ static bool tcan4550_init(struct net_device *dev, uint32_t bitRateReg)
         }
     }
 
-    tcan4550_set_standby_mode();
-    tcan4550_unlock();
-    tcan4550_setBitRate(bitRateReg);
-    tcan4550_configure_mram();
+    tcan4550_set_standby_mode(priv->spi);
+    tcan4550_unlock(priv->spi);
+    tcan4550_setBitRate(priv->spi, bitRateReg);
+    tcan4550_configure_mram(priv->spi);
 
     if (tcan4550_setupInterrupts(dev))
     {
@@ -662,7 +661,7 @@ static bool tcan4550_init(struct net_device *dev, uint32_t bitRateReg)
     }
 
     // now chip is ready to go
-    tcan4550_set_normal_mode();
+    tcan4550_set_normal_mode(priv->spi);
 
     return true;
 }
@@ -707,11 +706,11 @@ static int tcan_open(struct net_device *dev)
 // Called if user performs ifconfig canx down
 static int tcan_close(struct net_device *dev)
 {
-    //struct tcan4550_priv *priv = netdev_priv(dev);
+    struct tcan4550_priv *priv = netdev_priv(dev);
 
     netif_stop_queue(dev);
     close_candev(dev);
-    free_irq(spi->irq, dev);
+    free_irq(priv->spi->irq, dev);
 
     return 0;
 }
@@ -782,8 +781,6 @@ static int tcan_probe(struct spi_device *_spi)
         .unit = SPI_DELAY_UNIT_USECS,
         .value = 0
     };
-
-    spi = _spi; // store spi handle
 
     ndev = alloc_candev(sizeof(struct tcan4550_priv), 16);
     if (!ndev)
