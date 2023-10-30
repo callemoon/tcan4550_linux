@@ -115,7 +115,7 @@ static void tcan4550_unlock(struct spi_device *spi);
 static bool tcan4550_readIdentification(struct spi_device *spi);
 static bool tcan4550_setBitRate(struct spi_device *spi, uint32_t bitRate);
 static int tcan4550_setupInterrupts(struct net_device *dev);
-static void tcan4550_hwReset();
+static void tcan4550_hwReset(void);
 static void tcan4550_setupIo(struct device *dev);
 static void tcan4550_composeMessage(struct sk_buff *skb, uint32_t *buffer);
 
@@ -775,7 +775,7 @@ static const struct net_device_ops m_can_netdev_ops = {
 
 // Called by Linux if it matches our driver to a entry in device tree
 // or if we manually perform insmod of our driver
-static int tcan_probe(struct spi_device *_spi)
+static int tcan_probe(struct spi_device *spi)
 {
     struct net_device *ndev;
     int err;
