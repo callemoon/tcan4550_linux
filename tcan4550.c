@@ -103,9 +103,10 @@ struct tcan4550_priv
     struct sk_buff *tx_skb_buf[TX_BUFFER_SIZE];
     int tx_head;
     int tx_tail;
+    struct gpio_desc *reset_gpio;
 };
 
-static struct gpio_desc *reset_gpio; // global gpio handle. TODO remove.
+
 
 // TCAN function headers
 static void tcan4550_set_normal_mode(struct spi_device *spi);
@@ -115,7 +116,7 @@ static void tcan4550_unlock(struct spi_device *spi);
 static bool tcan4550_readIdentification(struct spi_device *spi);
 static bool tcan4550_setBitRate(struct spi_device *spi, uint32_t bitRate);
 static int tcan4550_setupInterrupts(struct net_device *dev);
-static void tcan4550_hwReset(void);
+static void tcan4550_hwReset(struct device *dev);
 static void tcan4550_setupIo(struct device *dev);
 static void tcan4550_composeMessage(struct sk_buff *skb, uint32_t *buffer);
 
@@ -616,20 +617,24 @@ static int tcan4550_setupInterrupts(struct net_device *dev)
 
 void tcan4550_setupIo(struct device *dev)
 {
-    reset_gpio = devm_gpiod_get_optional(dev, "reset", GPIOD_OUT_LOW); // get reset gpio from device-tree reset-gpio property, set to output low
-    if (IS_ERR(reset_gpio))
+    struct tcan4550_priv *priv = netdev_priv(dev);
+
+    priv->reset_gpio = devm_gpiod_get_optional(dev, "reset", GPIOD_OUT_LOW); // get reset gpio from device-tree reset-gpio property, set to output low
+    if (IS_ERR(priv->reset_gpio))
     {
         dev_err(dev, "could not get reset gpio\n");
 
-        reset_gpio = NULL;
+        priv->reset_gpio = NULL;
     }
 }
 
-void tcan4550_hwReset(void)
+void tcan4550_hwReset(struct device *dev)
 {
-    gpiod_set_value(reset_gpio, 1);
+    struct tcan4550_priv *priv = netdev_priv(dev);
+
+    gpiod_set_value(priv->reset_gpio, 1);
     usleep_range(30, 100); // toggle pin for at least  30us
-    gpiod_set_value(reset_gpio, 0);
+    gpiod_set_value(priv->reset_gpio, 0);
 
     usleep_range(700, 1000); // we need to wait at least 700us for chip to become ready
 }
