@@ -628,8 +628,6 @@ static bool tcan4550_init(struct net_device *dev, uint32_t bitRateReg)
     struct tcan4550_priv *priv = netdev_priv(dev);
     int err;
 
-
-
     tcan4550_set_standby_mode(priv->spi);
     tcan4550_unlock(priv->spi);
     tcan4550_setBitRate(priv->spi, bitRateReg);
@@ -803,12 +801,12 @@ static int tcan_probe(struct spi_device *spi)
     err = register_candev(ndev);
     if (err)
     {
-        dev_err(&spi->dev, "registering netdev failed\n");
+        dev_err(&spi->dev, "registering candev failed\n");
         goto exit_free;
     }
 
     tcan4550_setupIo(ndev);
-
+    usleep_range(700, 1000);
     tcan4550_hwReset(ndev);
 
     // check that the tcan4550 chip is available, try two times before giving up
@@ -820,7 +818,7 @@ static int tcan_probe(struct spi_device *spi)
 
             err = -ENODEV;
 
-            goto exit_free;
+            goto exit_unregister;
         }
     }
 
@@ -828,12 +826,14 @@ static int tcan_probe(struct spi_device *spi)
     if (!priv->wq)
     {
         err = -ENOMEM;
-        goto exit_free;
+        goto exit_unregister;
     }
     INIT_WORK(&priv->tx_work, tcan4550_tx_work_handler);
 
     return 0;
 
+exit_unregister:
+    unregister_candev(ndev);
 exit_free:
     free_candev(ndev);
 
