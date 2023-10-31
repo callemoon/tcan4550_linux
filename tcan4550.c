@@ -628,18 +628,7 @@ static bool tcan4550_init(struct net_device *dev, uint32_t bitRateReg)
     struct tcan4550_priv *priv = netdev_priv(dev);
     int err;
 
-    tcan4550_hwReset(dev);
 
-    // check that the tcan4550 chip is available, try two times before giving up
-    if (!tcan4550_readIdentification(priv->spi))
-    {
-        if (!tcan4550_readIdentification(priv->spi))
-        {
-            netdev_err(dev, "failed to read TCAN4550 identification\n");
-
-            return false;
-        }
-    }
 
     tcan4550_set_standby_mode(priv->spi);
     tcan4550_unlock(priv->spi);
@@ -819,6 +808,21 @@ static int tcan_probe(struct spi_device *spi)
     }
 
     tcan4550_setupIo(ndev);
+
+    tcan4550_hwReset(ndev);
+
+    // check that the tcan4550 chip is available, try two times before giving up
+    if (!tcan4550_readIdentification(spi))
+    {
+        if (!tcan4550_readIdentification(spi))
+        {
+            dev_err(dev, "failed to read TCAN4550 identification\n");
+
+            err = -ENODEV;
+
+            goto exit_free;
+        }
+    }
 
     priv->wq = alloc_workqueue("tcan4550_wq", WQ_FREEZABLE | WQ_MEM_RECLAIM, 1);
     if (!priv->wq)
