@@ -15,6 +15,8 @@ A device tree overlay is used to connect driver to SPI0 bus of Raspberry Pi. To 
 
 sudo dtc -@ -I dts -O dtb -o tcan4550-can0-overlay.dtbo tcan4550-can0-overlay.dts  
 
+## To run driver on Raspberry Pi 4
+
 To load and start driver run script: ./start_can.sh  
 
 To stop and unload the driver run script: ./stop_can.sh  
