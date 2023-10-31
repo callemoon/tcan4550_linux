@@ -110,8 +110,8 @@ static void tcan4550_set_standby_mode(struct spi_device *spi);
 static void tcan4550_configure_mram(struct spi_device *spi);
 static void tcan4550_unlock(struct spi_device *spi);
 static bool tcan4550_readIdentification(struct spi_device *spi);
-static bool tcan4550_setBitRate(struct spi_device *spi, uint32_t bitRate);
-void tcan4550_setupInterrupts(struct net_device *dev);
+static bool tcan4550_setBitRate(struct spi_device *spi, uint32_t bitRateReg);
+static void tcan4550_setupInterrupts(struct spi_device *spi);
 static void tcan4550_hwReset(struct net_device *dev);
 static void tcan4550_setupIo(struct net_device *dev);
 static void tcan4550_composeMessage(struct sk_buff *skb, uint32_t *buffer);
@@ -306,9 +306,9 @@ static bool tcan4550_readIdentification(struct spi_device *spi)
     return false;
 }
 
-static bool tcan4550_setBitRate(struct spi_device *spi, uint32_t bitRate)
+static bool tcan4550_setBitRate(struct spi_device *spi, uint32_t bitRateReg)
 {
-    spi_write32(spi, NBTP, bitRate);
+    spi_write32(spi, NBTP, bitRateReg);
 
     return true;
 }
@@ -579,26 +579,23 @@ static irqreturn_t tcan4450_handleInterrupts(int irq, void *dev)
     return IRQ_HANDLED;
 }
 
-void tcan4550_setupInterrupts(struct net_device *dev)
+void tcan4550_setupInterrupts(struct spi_device *spi)
 {
-    struct tcan4550_priv *priv = netdev_priv(dev);
-    int err;
+    spi_write32(spi, IE, RF0N + TFE + BO + EW + EP); // rx fifo 0 new message + tx fifo empty + bus off + warning + error passive
 
-    spi_write32(priv->spi, IE, RF0N + TFE + BO + EW + EP); // rx fifo 0 new message + tx fifo empty + bus off + warning + error passive
-
-    spi_write32(priv->spi, ILE, 0x1); // enable interrupt line 1
+    spi_write32(spi, ILE, 0x1); // enable interrupt line 1
 
     // mask all spi errors
-    spi_write32(priv->spi, SPI_MASK, 0xFFFFFFFF);
+    spi_write32(spi, SPI_MASK, 0xFFFFFFFF);
 
     // clear spi status register
-    spi_write32(priv->spi, STATUS, 0xFFFFFFFF);
+    spi_write32(spi, STATUS, 0xFFFFFFFF);
 
     // clear interrupts
-    spi_write32(priv->spi, INTERRUPT_FLAGS, 0xFFFFFFFF);
+    spi_write32(spi, INTERRUPT_FLAGS, 0xFFFFFFFF);
 
     // interrupt enables
-    spi_write32(priv->spi, INTERRUPT_ENABLE, 0);
+    spi_write32(spi, INTERRUPT_ENABLE, 0);
 }
 
 void tcan4550_setupIo(struct net_device *dev)
@@ -648,7 +645,7 @@ static bool tcan4550_init(struct net_device *dev, uint32_t bitRateReg)
     tcan4550_unlock(priv->spi);
     tcan4550_setBitRate(priv->spi, bitRateReg);
     tcan4550_configure_mram(priv->spi);
-    tcan4550_setupInterrupts(dev);
+    tcan4550_setupInterrupts(priv->spi);
 
     // start interrupt handler
     // as SPI is slow, run irq in a thread
