@@ -619,7 +619,7 @@ void tcan4550_hwReset(struct net_device *dev)
     usleep_range(30, 100); // toggle pin for at least  30us
     gpiod_set_value(priv->reset_gpio, 0);
 
-    usleep_range(700, 1000); // we need to wait at least 700us for chip to become ready
+    usleep_range(1700, 2000); // we need to wait at least 700us for chip to become ready
 }
 
 // initialize tcan4550 hardware
@@ -806,7 +806,7 @@ static int tcan_probe(struct spi_device *spi)
     }
 
     tcan4550_setupIo(ndev);
-    usleep_range(700, 1000);
+    usleep_range(1000, 2000);
     tcan4550_hwReset(ndev);
 
     // check that the tcan4550 chip is available, try two times before giving up
