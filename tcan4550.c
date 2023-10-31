@@ -487,10 +487,10 @@ bool tcan4550_recMsgs(struct net_device *dev)
 
     for(i = 0; i < msgsToGet; i++)
     {
-        struct canfd_frame *cf;
+        struct can_frame *cf;
         struct sk_buff *skb;
 
-        skb = alloc_can_skb(dev, (struct can_frame **)&cf);
+        skb = alloc_can_skb(dev, &cf);
 
         if (skb)
         {
