@@ -816,7 +816,7 @@ static int tcan_probe(struct spi_device *spi)
     {
         if (!tcan4550_readIdentification(spi))
         {
-            dev_err(dev, "failed to read TCAN4550 identification\n");
+            dev_err(&spi->dev, "failed to read TCAN4550 identification\n");
 
             err = -ENODEV;
 
