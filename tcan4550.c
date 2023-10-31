@@ -9,11 +9,9 @@
 #include <linux/module.h>
 #include <linux/netdevice.h>
 #include <linux/of.h>
-
 #include <linux/gpio/consumer.h>
-#include <linux/spi/spi.h>
-
 #include <linux/gpio.h>
+#include <linux/spi/spi.h>
 #include <linux/spinlock.h>
 #include <linux/version.h>
 
@@ -64,6 +62,7 @@ const static uint32_t TX_FIFO_START_ADDRESS = 0x0;
 const static uint32_t RX_MSG_BOXES = 16;
 const static uint32_t RX_FIFO_START_ADDRESS = 0x200;
 
+// MRAM constants
 const static uint32_t MRAM_BASE = 0x8000;
 const static uint32_t MRAM_SIZE_WORDS = 512;
 
