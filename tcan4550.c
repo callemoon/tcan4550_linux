@@ -111,7 +111,7 @@ static void tcan4550_configure_mram(struct spi_device *spi);
 static void tcan4550_unlock(struct spi_device *spi);
 static bool tcan4550_readIdentification(struct spi_device *spi);
 static bool tcan4550_setBitRate(struct spi_device *spi, uint32_t bitRate);
-static int tcan4550_setupInterrupts(struct net_device *dev);
+void tcan4550_setupInterrupts(struct net_device *dev);
 static void tcan4550_hwReset(struct net_device *dev);
 static void tcan4550_setupIo(struct net_device *dev);
 static void tcan4550_composeMessage(struct sk_buff *skb, uint32_t *buffer);
@@ -579,7 +579,7 @@ static irqreturn_t tcan4450_handleInterrupts(int irq, void *dev)
     return IRQ_HANDLED;
 }
 
-static int tcan4550_setupInterrupts(struct net_device *dev)
+void tcan4550_setupInterrupts(struct net_device *dev)
 {
     struct tcan4550_priv *priv = netdev_priv(dev);
     int err;
@@ -599,16 +599,6 @@ static int tcan4550_setupInterrupts(struct net_device *dev)
 
     // interrupt enables
     spi_write32(priv->spi, INTERRUPT_ENABLE, 0);
-
-    // start interrupt handler
-    // as SPI is slow, run irq in a thread
-    err = request_threaded_irq(priv->spi->irq, NULL, tcan4450_handleInterrupts, IRQF_ONESHOT, dev->name, dev);
-    if (err)
-    {
-        return err;
-    }
-
-    return 0;
 }
 
 void tcan4550_setupIo(struct net_device *dev)
@@ -639,7 +629,8 @@ void tcan4550_hwReset(struct net_device *dev)
 static bool tcan4550_init(struct net_device *dev, uint32_t bitRateReg)
 {
     struct tcan4550_priv *priv = netdev_priv(dev);
- 
+    int err;
+
     tcan4550_hwReset(dev);
 
     // check that the tcan4550 chip is available, try two times before giving up
@@ -657,8 +648,12 @@ static bool tcan4550_init(struct net_device *dev, uint32_t bitRateReg)
     tcan4550_unlock(priv->spi);
     tcan4550_setBitRate(priv->spi, bitRateReg);
     tcan4550_configure_mram(priv->spi);
+    tcan4550_setupInterrupts(dev);
 
-    if (tcan4550_setupInterrupts(dev))
+    // start interrupt handler
+    // as SPI is slow, run irq in a thread
+    err = request_threaded_irq(priv->spi->irq, NULL, tcan4450_handleInterrupts, IRQF_ONESHOT, dev->name, dev);
+    if (err)
     {
         netdev_err(dev, "failed to register interrupt\n");
 
