@@ -638,7 +638,7 @@ static bool tcan4550_init(struct net_device *dev, uint32_t bitRateReg)
 
     // start interrupt handler
     // as SPI is slow, run irq in a thread
-    err = request_threaded_irq(priv->spi->irq, NULL, tcan4450_handleInterrupts, IRQF_ONESHOT, dev->name, dev);
+    err = request_threaded_irq(priv->spi->irq, NULL, tcan4450_handleInterrupts, IRQF_TRIGGER_FALLING | IRQF_ONESHOT, dev->name, dev);
     if (err)
     {
         netdev_err(dev, "failed to register interrupt\n");
