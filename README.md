@@ -32,6 +32,14 @@ To measure busload use canbusload can0@1000000
 TX >70%@1000kbit/s  
 RX >70%@1000kbit/s  
 
+## Additional supported functions
+
+loopback - ip link set can0 type can loopback on
+
+one-shot - ip link set can0 type can one-shot on
+
+listen-only - ip link set can0 type can listen-only on
+
 ## Limitations
 Does not support CAN FD   
 Does not support bus off recovery  

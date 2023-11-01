@@ -54,7 +54,7 @@ const static uint32_t CSR = 0x10; // clock stop request
 const static uint32_t MODESEL_1 = 0x40;
 const static uint32_t MODESEL_2 = 0x80;
 
-// MRAM config
+// MRAM config. TODO: Move to devicetree?
 const static uint32_t RX_SLOT_SIZE = 16;
 const static uint32_t TX_SLOT_SIZE = 16;
 const static uint32_t TX_MSG_BOXES = 32;
@@ -67,14 +67,14 @@ const static uint32_t MRAM_BASE = 0x8000;
 const static uint32_t MRAM_SIZE_WORDS = 512;
 
 // Buffer configuration
-#define MAX_BURST_TX_MESSAGES   16  // Max CAN messages in a SPI write
-#define MAX_BURST_RX_MESSAGES   2   // Max CAN messages in a SPI read
+#define MAX_BURST_TX_MESSAGES 16 // Max CAN messages in a SPI write
+#define MAX_BURST_RX_MESSAGES 2  // Max CAN messages in a SPI read
 
-#define TX_BUFFER_SIZE 16+1 // size of tx-buffer used between Linux networking stack and SPI. One slot is reserved to be able to keep track of full queue.
+#define TX_BUFFER_SIZE 16 + 1 // size of tx-buffer used between Linux networking stack and SPI. One slot is reserved to be able to keep track of if queue is full
 
 unsigned long flags;
 static DEFINE_SPINLOCK(tx_skb_lock); // spinlock protecting tx_skb buffer
-static DEFINE_MUTEX(spi_lock); // mutex protecting SPI access
+static DEFINE_MUTEX(spi_lock);       // mutex protecting SPI access
 
 static const struct can_bittiming_const tcan4550_bittiming_const = {
     .name = KBUILD_MODNAME,
@@ -102,8 +102,8 @@ struct tcan4550_priv
     int tx_head;
     int tx_tail;
     struct gpio_desc *reset_gpio;
-    uint32_t rxBuffer[MAX_BURST_RX_MESSAGES*4];
-    uint32_t txBuffer[MAX_BURST_TX_MESSAGES*4];
+    uint32_t rxBuffer[MAX_BURST_RX_MESSAGES * 4];
+    uint32_t txBuffer[MAX_BURST_TX_MESSAGES * 4];
 };
 
 // TCAN function headers
@@ -170,27 +170,25 @@ static uint32_t spi_read32(struct spi_device *spi, uint32_t address)
     unsigned char txBuf[8];
     unsigned char rxBuf[8];
 
-    int ret;
-
     txBuf[0] = 0x41;
     txBuf[1] = address >> 8;
     txBuf[2] = address & 0xFF;
     txBuf[3] = 1;
 
-    ret = spi_transfer(spi, 8, rxBuf, txBuf);
+    spi_transfer(spi, 8, rxBuf, txBuf);
 
     return (rxBuf[4] << 24) + (rxBuf[5] << 16) + (rxBuf[6] << 8) + rxBuf[7];
 }
 
 static int spi_read_msgs(struct spi_device *spi, uint32_t address, int32_t msgs, uint32_t *data)
 {
-    unsigned char txBuf[4+(MAX_BURST_RX_MESSAGES*16)];
-    unsigned char rxBuf[4+(MAX_BURST_RX_MESSAGES*16)];
+    unsigned char txBuf[4 + (MAX_BURST_RX_MESSAGES * 16)];
+    unsigned char rxBuf[4 + (MAX_BURST_RX_MESSAGES * 16)];
 
     int ret;
     uint32_t i;
 
-    if(msgs > MAX_BURST_RX_MESSAGES)
+    if (msgs > MAX_BURST_RX_MESSAGES)
     {
         return -EINVAL;
     }
@@ -198,16 +196,16 @@ static int spi_read_msgs(struct spi_device *spi, uint32_t address, int32_t msgs,
     txBuf[0] = 0x41;
     txBuf[1] = address >> 8;
     txBuf[2] = address & 0xFF;
-    txBuf[3] = msgs*4;
+    txBuf[3] = msgs * 4;
 
     ret = spi_transfer(spi, 4 + (msgs * 16), rxBuf, txBuf);
 
-    for(i = 0; i < (msgs*4); i++)
+    for (i = 0; i < (msgs * 4); i++)
     {
-        data[0 + (i*4)] = rxBuf[7+(i*16)] + (rxBuf[6 + (i*16)] << 8) + (rxBuf[5 + (i*16)] << 16) + (rxBuf[4 + (i*16)] << 24);
-        data[1 + (i*4)] = rxBuf[11 + (i*16)] + (rxBuf[10 + (i*16)] << 8) + (rxBuf[9 + (i*16)] << 16) + (rxBuf[8 + (i*16)] << 24);
-        data[2 + (i*4)] = rxBuf[15 + (i*16)] + (rxBuf[14 + (i*16)] << 8) + (rxBuf[13 + (i*16)] << 16) + (rxBuf[12 + (i*16)] << 24);
-        data[3 + (i*4)] = rxBuf[19 + (i*16)] + (rxBuf[18 + (i*16)] << 8) + (rxBuf[17 + (i*16)] << 16) + (rxBuf[16 + (i*16)] << 24);
+        data[0 + (i * 4)] = rxBuf[7 + (i * 16)] + (rxBuf[6 + (i * 16)] << 8) + (rxBuf[5 + (i * 16)] << 16) + (rxBuf[4 + (i * 16)] << 24);
+        data[1 + (i * 4)] = rxBuf[11 + (i * 16)] + (rxBuf[10 + (i * 16)] << 8) + (rxBuf[9 + (i * 16)] << 16) + (rxBuf[8 + (i * 16)] << 24);
+        data[2 + (i * 4)] = rxBuf[15 + (i * 16)] + (rxBuf[14 + (i * 16)] << 8) + (rxBuf[13 + (i * 16)] << 16) + (rxBuf[12 + (i * 16)] << 24);
+        data[3 + (i * 4)] = rxBuf[19 + (i * 16)] + (rxBuf[18 + (i * 16)] << 8) + (rxBuf[17 + (i * 16)] << 16) + (rxBuf[16 + (i * 16)] << 24);
     }
 
     return ret;
@@ -236,30 +234,30 @@ static int spi_write32(struct spi_device *spi, uint32_t address, uint32_t data)
 
 static int spi_write_msgs(struct spi_device *spi, uint32_t address, int32_t msgs, uint32_t *data)
 {
-    unsigned char txBuf[4+(MAX_BURST_TX_MESSAGES*16)];
-    unsigned char rxBuf[4+(MAX_BURST_TX_MESSAGES*16)];
+    unsigned char txBuf[4 + (MAX_BURST_TX_MESSAGES * 16)];
+    unsigned char rxBuf[4 + (MAX_BURST_TX_MESSAGES * 16)];
     uint32_t i;
     int ret;
 
-    if(msgs > MAX_BURST_TX_MESSAGES)
+    if (msgs > MAX_BURST_TX_MESSAGES)
     {
-       return -EINVAL;
+        return -EINVAL;
     }
 
     txBuf[0] = 0x61;
     txBuf[1] = address >> 8;
     txBuf[2] = address & 0xFF;
-    txBuf[3] = msgs*4;
+    txBuf[3] = msgs * 4;
 
-    for(i = 0; i < (msgs * 4); i++)
+    for (i = 0; i < (msgs * 4); i++)
     {
-        txBuf[4 + (i*4)] = ((data[i] >> 24) & 0xFF);
-        txBuf[5 + (i*4)] = ((data[i] >> 16) & 0xFF);
-        txBuf[6 + (i*4)] = ((data[i] >> 8) & 0xFF);
-        txBuf[7 + (i*4)] = (data[i] & 0xFF);
+        txBuf[4 + (i * 4)] = ((data[i] >> 24) & 0xFF);
+        txBuf[5 + (i * 4)] = ((data[i] >> 16) & 0xFF);
+        txBuf[6 + (i * 4)] = ((data[i] >> 8) & 0xFF);
+        txBuf[7 + (i * 4)] = (data[i] & 0xFF);
     }
 
-    ret = spi_transfer(spi, 4+(msgs*16), rxBuf, txBuf);
+    ret = spi_transfer(spi, 4 + (msgs * 16), rxBuf, txBuf);
 
     return ret;
 }
@@ -359,27 +357,27 @@ void tcan4550_composeMessage(struct sk_buff *skb, uint32_t *buffer)
 
     frame = (struct can_frame *)skb->data;
 
-    extended = (frame->can_id & CAN_EFF_FLAG)?true:false;
-    rtr = (frame->can_id & CAN_RTR_FLAG)?true:false;
+    extended = (frame->can_id & CAN_EFF_FLAG) ? true : false;
+    rtr = (frame->can_id & CAN_RTR_FLAG) ? true : false;
 
     len = frame->len;
     if (len > 8)
     {
         len = 8;
     }
-    
-    if(extended)
+
+    if (extended)
     {
         id = frame->can_id & CAN_EFF_MASK;
         buffer[0] = id;
     }
     else
     {
-        id = frame->can_id & CAN_SFF_MASK; 
+        id = frame->can_id & CAN_SFF_MASK;
         buffer[0] = (id << 18);
     }
 
-    buffer[0] += (rtr << 29) + (extended << 30);    // add extended and rtr flags
+    buffer[0] += (rtr << 29) + (extended << 30); // add extended and rtr flags
     buffer[1] = (len << 16);
     buffer[2] = frame->data[0] + (frame->data[1] << 8) + (frame->data[2] << 16) + (frame->data[3] << 24);
     buffer[3] = frame->data[4] + (frame->data[5] << 8) + (frame->data[6] << 16) + (frame->data[7] << 24);
@@ -400,17 +398,17 @@ static void tcan4550_tx_work_handler(struct work_struct *ws)
     uint32_t requestMask = 0;
 
     uint32_t msgs = 0;
-    
+
     uint32_t baseAddress = MRAM_BASE + TX_FIFO_START_ADDRESS + (writeIndex * TX_SLOT_SIZE);
 
     uint32_t msgsToTransmit = freeBuffers;
-    if(msgsToTransmit > MAX_BURST_TX_MESSAGES)
+    if (msgsToTransmit > MAX_BURST_TX_MESSAGES)
     {
         msgsToTransmit = MAX_BURST_TX_MESSAGES;
     }
 
     // Make sure TX buffer does not wrap around
-    if((writeIndexTmp + msgsToTransmit) > TX_MSG_BOXES)
+    if ((writeIndexTmp + msgsToTransmit) > TX_MSG_BOXES)
     {
         msgsToTransmit = (TX_MSG_BOXES - writeIndexTmp);
     }
@@ -418,23 +416,23 @@ static void tcan4550_tx_work_handler(struct work_struct *ws)
     spin_lock_irqsave(&tx_skb_lock, flags);
 
     // build an SPI message consisting of several CAN msgs
-    while((priv->tx_head != priv->tx_tail) && (msgs < msgsToTransmit))
+    while ((priv->tx_head != priv->tx_tail) && (msgs < msgsToTransmit))
     {
         uint32_t len;
 
-        tcan4550_composeMessage(priv->tx_skb_buf[priv->tx_tail], &priv->txBuffer[msgs*4]);
+        tcan4550_composeMessage(priv->tx_skb_buf[priv->tx_tail], &priv->txBuffer[msgs * 4]);
 
         can_put_echo_skb(priv->tx_skb_buf[priv->tx_tail], priv->ndev, 0, 0);
         len = can_get_echo_skb(priv->ndev, 0, 0);
         can_free_echo_skb(priv->ndev, 0, 0);
 
-        requestMask += (1 << writeIndexTmp);    // add current message to request mask
+        requestMask += (1 << writeIndexTmp); // add current message to request mask
 
         msgs++;
         writeIndexTmp++;
 
         priv->tx_tail++;
-        if(priv->tx_tail >= TX_BUFFER_SIZE)
+        if (priv->tx_tail >= TX_BUFFER_SIZE)
         {
             priv->tx_tail = 0;
         }
@@ -446,9 +444,9 @@ static void tcan4550_tx_work_handler(struct work_struct *ws)
 
     spin_unlock_irqrestore(&tx_skb_lock, flags);
 
-    if(msgs > 0)
+    if (msgs > 0)
     {
-        spi_write_msgs(priv->spi, baseAddress, msgs, priv->txBuffer);   // write message data
+        spi_write_msgs(priv->spi, baseAddress, msgs, priv->txBuffer); // write message data
 
         spi_write32(priv->spi, TXBAR, requestMask); // request buffer transmission
     }
@@ -463,35 +461,34 @@ bool tcan4550_recMsgs(struct net_device *dev)
 
     uint32_t rxf0s = spi_read32(priv->spi, RXF0S);
 
-    uint32_t fillLevel = (rxf0s & 0x7F);          // 0-64
-    uint32_t getIndex = ((rxf0s >> 8) & 0x3F);    // 0-63
+    uint32_t fillLevel = (rxf0s & 0x7F);       // 0-64
+    uint32_t getIndex = ((rxf0s >> 8) & 0x3F); // 0-63
 
     uint32_t msgsToGet = fillLevel;
     uint32_t baseAddress = MRAM_BASE + RX_FIFO_START_ADDRESS + (getIndex * RX_SLOT_SIZE);
 
-
-    if(msgsToGet == 0)
+    if (msgsToGet == 0)
     {
         return false;
     }
 
     // stop if hw rx buffer wraps around, we need to request the rest in a separate SPI package
-    if(msgsToGet > (RX_MSG_BOXES - getIndex))
+    if (msgsToGet > (RX_MSG_BOXES - getIndex))
     {
         msgsToGet = (RX_MSG_BOXES - getIndex);
     }
 
     // do not read too many packages at once as we also need to ack rx packages to give room for new rx and perform tx
-    if(msgsToGet > MAX_BURST_RX_MESSAGES)
+    if (msgsToGet > MAX_BURST_RX_MESSAGES)
     {
         msgsToGet = MAX_BURST_RX_MESSAGES;
     }
-    
+
     spi_read_msgs(priv->spi, baseAddress, msgsToGet, priv->rxBuffer);
 
     spi_write32(priv->spi, RXF0A, (getIndex + msgsToGet - 1)); // acknowledge the last message we have read, that will automatically free all messages read
 
-    for(i = 0; i < msgsToGet; i++)
+    for (i = 0; i < msgsToGet; i++)
     {
         struct can_frame *cf;
         struct sk_buff *skb;
@@ -502,20 +499,20 @@ bool tcan4550_recMsgs(struct net_device *dev)
         {
             uint32_t data[4];
 
-            data[0] = priv->rxBuffer[0+(i*4)];
-            data[1] = priv->rxBuffer[1+(i*4)];
-            data[2] = priv->rxBuffer[2+(i*4)];
-            data[3] = priv->rxBuffer[3+(i*4)];
+            data[0] = priv->rxBuffer[0 + (i * 4)];
+            data[1] = priv->rxBuffer[1 + (i * 4)];
+            data[2] = priv->rxBuffer[2 + (i * 4)];
+            data[3] = priv->rxBuffer[3 + (i * 4)];
 
             cf->len = (data[1] >> 16) & 0x7F;
-        
-            if(data[0] & (1 << 30)) // extended
+
+            if (data[0] & (1 << 30)) // extended
             {
                 cf->can_id = (data[0] & CAN_EFF_MASK) | CAN_EFF_FLAG;
             }
             else
             {
-                cf->can_id = (data[0] >> 18) & CAN_SFF_MASK; 
+                cf->can_id = (data[0] >> 18) & CAN_SFF_MASK;
             }
 
             cf->data[0] = data[2] & 0xFF;
@@ -527,7 +524,7 @@ bool tcan4550_recMsgs(struct net_device *dev)
             cf->data[6] = (data[3] >> 16) & 0xFF;
             cf->data[7] = (data[3] >> 24) & 0xFF;
 
-            netif_rx(skb);  // Send data to linux networking subsystem
+            netif_rx(skb); // Send data to Linux networking stack
 
             stats->rx_packets++;
             stats->rx_bytes += cf->len;
@@ -546,7 +543,7 @@ static irqreturn_t tcan4450_handleInterrupts(int irq, void *dev)
     ir = spi_read32(priv->spi, IR);
     spi_write32(priv->spi, IR, ir); // acknowledge interrupts
 
-    if(ir == 0)
+    if (ir == 0)
     {
         return IRQ_NONE;
     }
@@ -567,7 +564,7 @@ static irqreturn_t tcan4450_handleInterrupts(int irq, void *dev)
     if (ir & BO)
     {
         priv->can.can_stats.bus_off++;
-        can_bus_off(dev);   // Signal to Linux networking subsystem that we are bus off
+        can_bus_off(dev); // tell Linux networking stack that we are bus off
     }
 
     // error warning
@@ -650,7 +647,7 @@ static bool tcan4550_init(struct net_device *dev, uint32_t bitRateReg)
         return false;
     }
 
-    // now chip is ready to go
+    // after this chip is ready to send/receive messages
     tcan4550_set_normal_mode(priv->spi);
 
     return true;
@@ -705,11 +702,12 @@ static int tcan_close(struct net_device *dev)
     return 0;
 }
 
-// Called from Linux network subsystem when we should send a message
-// Linux run network subsystem as a soft-irq so we are not allowed to sleep here
-// We will here copy frame to our sw tx buffer. If sw tx buffer is full, stop queue with netif_stop_queue.
+// Called from Linux network stack to request sending of a CAN message
+// Linux call start_xmit from soft-irq context so we are not allowed to sleep here
+// We do not actually send anything here, just copy frame to our sw tx buffer.
+// If sw tx buffer is full, stop queue with netif_stop_queue.
 static netdev_tx_t tcan_start_xmit(struct sk_buff *skb,
-                                    struct net_device *dev)
+                                   struct net_device *dev)
 {
     struct tcan4550_priv *priv;
     uint32_t tmpHead;
@@ -726,14 +724,14 @@ static netdev_tx_t tcan_start_xmit(struct sk_buff *skb,
 
     tmpHead = priv->tx_head;
     tmpHead++;
-    if(tmpHead >= TX_BUFFER_SIZE)
+    if (tmpHead >= TX_BUFFER_SIZE)
     {
         tmpHead = 0;
     }
-    
-    if(tmpHead == priv->tx_tail)
+
+    if (tmpHead == priv->tx_tail)
     {
-        netif_stop_queue(dev);
+        netif_stop_queue(dev); // queue will be started again from tfe interrupt
 
         spin_unlock_irqrestore(&tx_skb_lock, flags);
 
@@ -743,7 +741,7 @@ static netdev_tx_t tcan_start_xmit(struct sk_buff *skb,
     }
 
     priv->tx_skb_buf[priv->tx_head] = skb;
-    priv->tx_head=tmpHead;
+    priv->tx_head = tmpHead;
 
     spin_unlock_irqrestore(&tx_skb_lock, flags);
 
@@ -767,12 +765,11 @@ static int tcan_probe(struct spi_device *spi)
     int err;
     struct tcan4550_priv *priv;
     struct spi_delay delay =
-    {
-        .unit = SPI_DELAY_UNIT_USECS,
-        .value = 0
-    };
+        {
+            .unit = SPI_DELAY_UNIT_USECS,
+            .value = 0};
 
-    ndev = alloc_candev(sizeof(struct tcan4550_priv), 16);  // TODO: fix size
+    ndev = alloc_candev(sizeof(struct tcan4550_priv), 16); // TODO: fix size
     if (!ndev)
     {
         return -ENOMEM;
@@ -786,13 +783,13 @@ static int tcan_probe(struct spi_device *spi)
     priv->ndev = ndev;
     priv->spi = spi;
     priv->can.bittiming_const = &tcan4550_bittiming_const;
-    priv->can.clock.freq = 40000000;
+    priv->can.clock.freq = 40000000; // TODO: read from devicetree
 
     ndev->netdev_ops = &m_can_netdev_ops;
     ndev->flags |= IFF_ECHO;
 
     spi->bits_per_word = 8;
-    spi->max_speed_hz = 18000000;   // TODO: read from devicetree
+    spi->max_speed_hz = 18000000; // TODO: read from devicetree
     spi->cs_setup = delay;
     spi->cs_hold = delay;
     spi->cs_inactive = delay;
@@ -846,7 +843,7 @@ exit_free:
     return err;
 }
 
-#if LINUX_VERSION_CODE <= KERNEL_VERSION(5,18,0)
+#if LINUX_VERSION_CODE <= KERNEL_VERSION(5, 18, 0)
 int tcan_remove(struct spi_device *spi)
 #else
 void tcan_remove(struct spi_device *spi)
@@ -854,12 +851,12 @@ void tcan_remove(struct spi_device *spi)
 {
     struct net_device *ndev = spi_get_drvdata(spi);
     struct tcan4550_priv *priv = netdev_priv(ndev);
-    
+
     unregister_candev(ndev);
     free_candev(ndev);
     destroy_workqueue(priv->wq);
 
-#if LINUX_VERSION_CODE <= KERNEL_VERSION(5,18,0)
+#if LINUX_VERSION_CODE <= KERNEL_VERSION(5, 18, 0)
     return 0;
 #endif
 }
