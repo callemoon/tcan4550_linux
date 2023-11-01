@@ -68,7 +68,7 @@ const static uint32_t MRAM_SIZE_WORDS = 512;
 
 // Buffer configuration
 #define MAX_BURST_TX_MESSAGES   16  // Max CAN messages in a SPI write
-#define MAX_BURST_RX_MESSAGES   8   // Max CAN messages in a SPI read
+#define MAX_BURST_RX_MESSAGES   2   // Max CAN messages in a SPI read
 
 #define TX_BUFFER_SIZE 16+1 // size of tx-buffer used between Linux networking stack and SPI. One slot is reserved to be able to keep track of full queue.
 
@@ -184,13 +184,13 @@ static uint32_t spi_read32(struct spi_device *spi, uint32_t address)
 
 static int spi_read_msgs(struct spi_device *spi, uint32_t address, int32_t msgs, uint32_t *data)
 {
-    unsigned char txBuf[4+(MAX_BURST_TX_MESSAGES*16)];
-    unsigned char rxBuf[4+(MAX_BURST_TX_MESSAGES*16)];
+    unsigned char txBuf[4+(MAX_BURST_RX_MESSAGES*16)];
+    unsigned char rxBuf[4+(MAX_BURST_RX_MESSAGES*16)];
 
     int ret;
     uint32_t i;
 
-    if(msgs > MAX_BURST_TX_MESSAGES)
+    if(msgs > MAX_BURST_RX_MESSAGES)
     {
         return -EINVAL;
     }
@@ -469,6 +469,12 @@ bool tcan4550_recMsgs(struct net_device *dev)
     uint32_t msgsToGet = fillLevel;
     uint32_t baseAddress = MRAM_BASE + RX_FIFO_START_ADDRESS + (getIndex * RX_SLOT_SIZE);
 
+
+    if(msgsToGet == 0)
+    {
+        return false;
+    }
+
     // stop if hw rx buffer wraps around, we need to request the rest in a separate SPI package
     if(msgsToGet > (RX_MSG_BOXES - getIndex))
     {
@@ -528,7 +534,7 @@ bool tcan4550_recMsgs(struct net_device *dev)
         }
     }
 
-    return false;
+    return true;
 }
 
 // interrupt handler - run as an irq thread
