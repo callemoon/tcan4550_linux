@@ -182,13 +182,13 @@ static uint32_t spi_read32(struct spi_device *spi, uint32_t address)
 
 static int spi_read_msgs(struct spi_device *spi, uint32_t address, int32_t msgs, uint32_t *data)
 {
-    unsigned char txBuf[4+(MAX_BURST_TX_MESSAGES*16)];
-    unsigned char rxBuf[4+(MAX_BURST_TX_MESSAGES*16)];
+    unsigned char txBuf[4+(MAX_BURST_RX_MESSAGES*16)];
+    unsigned char rxBuf[4+(MAX_BURST_RX_MESSAGES*16)];
 
     int ret;
     uint32_t i;
 
-    if(msgs > MAX_BURST_TX_MESSAGES)
+    if(msgs > MAX_BURST_RX_MESSAGES)
     {
         return -EINVAL;
     }
