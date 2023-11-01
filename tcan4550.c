@@ -102,7 +102,7 @@ struct tcan4550_priv
     int tx_head;
     int tx_tail;
     struct gpio_desc *reset_gpio;
-    uint32_t rxBuf[MAX_BURST_RX_MESSAGES*4];
+    uint32_t rxBuffer[MAX_BURST_RX_MESSAGES*4];
     uint32_t txBuffer[MAX_BURST_TX_MESSAGES*4];
 };
 
@@ -487,7 +487,7 @@ bool tcan4550_recMsgs(struct net_device *dev)
         msgsToGet = MAX_BURST_RX_MESSAGES;
     }
     
-    spi_read_msgs(priv->spi, baseAddress, msgsToGet, priv->rxBuf);
+    spi_read_msgs(priv->spi, baseAddress, msgsToGet, priv->rxBuffer);
 
     spi_write32(priv->spi, RXF0A, (getIndex + msgsToGet - 1)); // acknowledge the last message we have read, that will automatically free all messages read
 
@@ -502,10 +502,10 @@ bool tcan4550_recMsgs(struct net_device *dev)
         {
             uint32_t data[4];
 
-            data[0] = priv->rxBuf[0+(i*4)];
-            data[1] = priv->rxBuf[1+(i*4)];
-            data[2] = priv->rxBuf[2+(i*4)];
-            data[3] = priv->rxBuf[3+(i*4)];
+            data[0] = priv->rxBuffer[0+(i*4)];
+            data[1] = priv->rxBuffer[1+(i*4)];
+            data[2] = priv->rxBuffer[2+(i*4)];
+            data[3] = priv->rxBuffer[3+(i*4)];
 
             cf->len = (data[1] >> 16) & 0x7F;
         
@@ -622,7 +622,7 @@ void tcan4550_hwReset(struct net_device *dev)
     struct tcan4550_priv *priv = netdev_priv(dev);
 
     gpiod_set_value(priv->reset_gpio, 1);
-    usleep_range(30, 100); // toggle pin for at least  30us
+    usleep_range(30, 100); // toggle pin for at least 30us
     gpiod_set_value(priv->reset_gpio, 0);
 
     usleep_range(1700, 2000); // we need to wait at least 700us for chip to become ready
@@ -641,7 +641,7 @@ static bool tcan4550_init(struct net_device *dev, uint32_t bitRateReg)
     tcan4550_setupInterrupts(priv->spi);
 
     // start interrupt handler
-    // as SPI is slow, run irq in a thread
+    // as SPI is slow, run as threaded irq
     err = request_threaded_irq(priv->spi->irq, NULL, tcan4450_handleInterrupts, IRQF_ONESHOT, dev->name, dev);
     if (err)
     {
@@ -760,7 +760,7 @@ static const struct net_device_ops m_can_netdev_ops = {
 };
 
 // Called by Linux if it matches our driver to a entry in device tree
-// or if we manually perform insmod of our driver
+// or if we manually perform call dtoverlay
 static int tcan_probe(struct spi_device *spi)
 {
     struct net_device *ndev;
@@ -815,7 +815,7 @@ static int tcan_probe(struct spi_device *spi)
     usleep_range(1000, 2000);
     tcan4550_hwReset(ndev);
 
-    // check that the tcan4550 chip is available, try two times before giving up
+    // read chip identification to verify correct chip is there
     if (!tcan4550_readIdentification(spi))
     {
         if (!tcan4550_readIdentification(spi))
