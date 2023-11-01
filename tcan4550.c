@@ -68,7 +68,7 @@ const static uint32_t MRAM_SIZE_WORDS = 512;
 
 // Buffer configuration
 #define MAX_BURST_TX_MESSAGES   16  // Max CAN messages in a SPI write
-#define MAX_BURST_RX_MESSAGES   4   // Max CAN messages in a SPI read
+#define MAX_BURST_RX_MESSAGES   2   // Max CAN messages in a SPI read
 
 #define TX_BUFFER_SIZE 16+1 // size of tx-buffer used between Linux networking stack and SPI. One slot is reserved to be able to keep track of full queue.
 
