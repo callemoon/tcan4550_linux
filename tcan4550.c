@@ -54,7 +54,7 @@ const static uint32_t CSR = 0x10; // clock stop request
 const static uint32_t MODESEL_1 = 0x40;
 const static uint32_t MODESEL_2 = 0x80;
 
-// MRAM config
+// MRAM config. TODO: Move to devicetree?
 const static uint32_t RX_SLOT_SIZE = 16;
 const static uint32_t TX_SLOT_SIZE = 16;
 const static uint32_t TX_MSG_BOXES = 32;
@@ -70,7 +70,7 @@ const static uint32_t MRAM_SIZE_WORDS = 512;
 #define MAX_BURST_TX_MESSAGES   16  // Max CAN messages in a SPI write
 #define MAX_BURST_RX_MESSAGES   2   // Max CAN messages in a SPI read
 
-#define TX_BUFFER_SIZE 16+1 // size of tx-buffer used between Linux networking stack and SPI. One slot is reserved to be able to keep track of full queue.
+#define TX_BUFFER_SIZE 16+1 // size of tx-buffer used between Linux networking stack and SPI. One slot is reserved to be able to keep track of if queue is full
 
 unsigned long flags;
 static DEFINE_SPINLOCK(tx_skb_lock); // spinlock protecting tx_skb buffer
@@ -469,7 +469,6 @@ bool tcan4550_recMsgs(struct net_device *dev)
     uint32_t msgsToGet = fillLevel;
     uint32_t baseAddress = MRAM_BASE + RX_FIFO_START_ADDRESS + (getIndex * RX_SLOT_SIZE);
 
-
     if(msgsToGet == 0)
     {
         return false;
@@ -527,7 +526,7 @@ bool tcan4550_recMsgs(struct net_device *dev)
             cf->data[6] = (data[3] >> 16) & 0xFF;
             cf->data[7] = (data[3] >> 24) & 0xFF;
 
-            netif_rx(skb);  // Send data to linux networking subsystem
+            netif_rx(skb);  // Send data to linux networking stack
 
             stats->rx_packets++;
             stats->rx_bytes += cf->len;
@@ -567,7 +566,7 @@ static irqreturn_t tcan4450_handleInterrupts(int irq, void *dev)
     if (ir & BO)
     {
         priv->can.can_stats.bus_off++;
-        can_bus_off(dev);   // Signal to Linux networking subsystem that we are bus off
+        can_bus_off(dev);   // tell Linux networking stack that we are bus off
     }
 
     // error warning
@@ -650,7 +649,7 @@ static bool tcan4550_init(struct net_device *dev, uint32_t bitRateReg)
         return false;
     }
 
-    // now chip is ready to go
+    // after this chip is ready to send/receive messages
     tcan4550_set_normal_mode(priv->spi);
 
     return true;
@@ -705,9 +704,10 @@ static int tcan_close(struct net_device *dev)
     return 0;
 }
 
-// Called from Linux network subsystem when we should send a message
-// Linux run network subsystem as a soft-irq so we are not allowed to sleep here
-// We will here copy frame to our sw tx buffer. If sw tx buffer is full, stop queue with netif_stop_queue.
+// Called from Linux network stack to request sending of a CAN message
+// Linux call start_xmit from soft-irq context so we are not allowed to sleep here
+// We do not actually send anything here, just copy frame to our sw tx buffer. 
+// If sw tx buffer is full, stop queue with netif_stop_queue.
 static netdev_tx_t tcan_start_xmit(struct sk_buff *skb,
                                     struct net_device *dev)
 {
@@ -733,7 +733,7 @@ static netdev_tx_t tcan_start_xmit(struct sk_buff *skb,
     
     if(tmpHead == priv->tx_tail)
     {
-        netif_stop_queue(dev);
+        netif_stop_queue(dev);  // queue will be started again from tfe interrupt
 
         spin_unlock_irqrestore(&tx_skb_lock, flags);
 
@@ -786,7 +786,7 @@ static int tcan_probe(struct spi_device *spi)
     priv->ndev = ndev;
     priv->spi = spi;
     priv->can.bittiming_const = &tcan4550_bittiming_const;
-    priv->can.clock.freq = 40000000;
+    priv->can.clock.freq = 40000000;    // TODO: read from devicetree
 
     ndev->netdev_ops = &m_can_netdev_ops;
     ndev->flags |= IFF_ECHO;
