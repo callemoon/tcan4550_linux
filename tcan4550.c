@@ -102,6 +102,8 @@ struct tcan4550_priv
     int tx_head;
     int tx_tail;
     struct gpio_desc *reset_gpio;
+    uint32_t rxBuf[MAX_BURST_RX_MESSAGES*4];
+    uint32_t txBuffer[MAX_BURST_TX_MESSAGES*4];
 };
 
 // TCAN function headers
@@ -395,7 +397,6 @@ static void tcan4550_tx_work_handler(struct work_struct *ws)
     uint32_t writeIndex = (txqfs >> 16) & 0x1F;
     uint32_t writeIndexTmp = writeIndex;
 
-    uint32_t txBuffer[MAX_BURST_TX_MESSAGES*4];
     uint32_t requestMask = 0;
 
     uint32_t msgs = 0;
@@ -421,7 +422,7 @@ static void tcan4550_tx_work_handler(struct work_struct *ws)
     {
         uint32_t len;
 
-        tcan4550_composeMessage(priv->tx_skb_buf[priv->tx_tail], &txBuffer[msgs*4]);
+        tcan4550_composeMessage(priv->tx_skb_buf[priv->tx_tail], &priv->txBuffer[msgs*4]);
 
         can_put_echo_skb(priv->tx_skb_buf[priv->tx_tail], priv->ndev, 0, 0);
         len = can_get_echo_skb(priv->ndev, 0, 0);
@@ -447,7 +448,7 @@ static void tcan4550_tx_work_handler(struct work_struct *ws)
 
     if(msgs > 0)
     {
-        spi_write_msgs(priv->spi, baseAddress, msgs, txBuffer);   // write message data
+        spi_write_msgs(priv->spi, baseAddress, msgs, priv->txBuffer);   // write message data
 
         spi_write32(priv->spi, TXBAR, requestMask); // request buffer transmission
     }
@@ -455,7 +456,6 @@ static void tcan4550_tx_work_handler(struct work_struct *ws)
 
 bool tcan4550_recMsgs(struct net_device *dev)
 {
-    uint32_t rxBuf[MAX_BURST_RX_MESSAGES*4];
     uint32_t i;
     struct net_device_stats *stats = &(dev->stats);
 
@@ -481,7 +481,7 @@ bool tcan4550_recMsgs(struct net_device *dev)
         msgsToGet = MAX_BURST_RX_MESSAGES;
     }
     
-    spi_read_msgs(priv->spi, baseAddress, msgsToGet, rxBuf);
+    spi_read_msgs(priv->spi, baseAddress, msgsToGet, priv->rxBuf);
 
     spi_write32(priv->spi, RXF0A, (getIndex + msgsToGet - 1)); // acknowledge the last message we have read, that will automatically free all messages read
 
@@ -496,10 +496,10 @@ bool tcan4550_recMsgs(struct net_device *dev)
         {
             uint32_t data[4];
 
-            data[0] = rxBuf[0+(i*4)];
-            data[1] = rxBuf[1+(i*4)];
-            data[2] = rxBuf[2+(i*4)];
-            data[3] = rxBuf[3+(i*4)];
+            data[0] = priv->rxBuf[0+(i*4)];
+            data[1] = priv->rxBuf[1+(i*4)];
+            data[2] = priv->rxBuf[2+(i*4)];
+            data[3] = priv->rxBuf[3+(i*4)];
 
             cf->len = (data[1] >> 16) & 0x7F;
         
