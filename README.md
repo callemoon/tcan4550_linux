@@ -33,8 +33,7 @@ TX >70%@1000kbit/s
 RX >70%@1000kbit/s  
 
 ## Limitations
-Does not support CAN FD   
-Does not support bus off recovery  
+Does not support CAN FD  
 Does not support suspend/resume  
 Does not support silent mode  
 

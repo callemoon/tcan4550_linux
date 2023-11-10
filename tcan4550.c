@@ -68,9 +68,11 @@ const static uint32_t MRAM_SIZE_WORDS = 512;
 
 // Buffer configuration
 #define MAX_BURST_TX_MESSAGES   16  // Max CAN messages in a SPI write
-#define MAX_BURST_RX_MESSAGES   2   // Max CAN messages in a SPI read
+#define MAX_BURST_RX_MESSAGES   4   // Max CAN messages in a SPI read
 
 #define TX_BUFFER_SIZE 16+1 // size of tx-buffer used between Linux networking stack and SPI. One slot is reserved to be able to keep track of if queue is full
+
+#define ECHO_BUFFERS    1
 
 unsigned long flags;
 static DEFINE_SPINLOCK(tx_skb_lock); // spinlock protecting tx_skb buffer
@@ -112,11 +114,12 @@ static void tcan4550_set_standby_mode(struct spi_device *spi);
 static void tcan4550_configure_mram(struct spi_device *spi);
 static void tcan4550_unlock(struct spi_device *spi);
 static bool tcan4550_readIdentification(struct spi_device *spi);
-static bool tcan4550_setBitRate(struct spi_device *spi, uint32_t bitRateReg);
+static void tcan4550_setBitRate(struct spi_device *spi, uint32_t bitRateReg);
 static void tcan4550_setupInterrupts(struct spi_device *spi);
 static void tcan4550_hwReset(struct net_device *dev);
 static void tcan4550_setupIo(struct net_device *dev);
 static void tcan4550_composeMessage(struct sk_buff *skb, uint32_t *buffer);
+static int tcan4550_set_mode(struct net_device *net, enum can_mode mode);
 
 static irqreturn_t tcan4450_handleInterrupts(int irq, void *dev);
 
@@ -306,11 +309,9 @@ static bool tcan4550_readIdentification(struct spi_device *spi)
     return false;
 }
 
-static bool tcan4550_setBitRate(struct spi_device *spi, uint32_t bitRateReg)
+static void tcan4550_setBitRate(struct spi_device *spi, uint32_t bitRateReg)
 {
     spi_write32(spi, NBTP, bitRateReg);
-
-    return true;
 }
 
 static void tcan4550_configure_mram(struct spi_device *spi)
@@ -383,6 +384,7 @@ void tcan4550_composeMessage(struct sk_buff *skb, uint32_t *buffer)
     buffer[3] = frame->data[4] + (frame->data[5] << 8) + (frame->data[6] << 16) + (frame->data[7] << 24);
 }
 
+// actually send the messages to the CAN controller. This function is called from a work-queue
 static void tcan4550_tx_work_handler(struct work_struct *ws)
 {
     struct tcan4550_priv *priv = container_of(ws, struct tcan4550_priv,
@@ -394,9 +396,7 @@ static void tcan4550_tx_work_handler(struct work_struct *ws)
     uint32_t freeBuffers = txqfs & 0x3F;
     uint32_t writeIndex = (txqfs >> 16) & 0x1F;
     uint32_t writeIndexTmp = writeIndex;
-
     uint32_t requestMask = 0;
-
     uint32_t msgs = 0;
     
     uint32_t baseAddress = MRAM_BASE + TX_FIFO_START_ADDRESS + (writeIndex * TX_SLOT_SIZE);
@@ -419,12 +419,21 @@ static void tcan4550_tx_work_handler(struct work_struct *ws)
     while((priv->tx_head != priv->tx_tail) && (msgs < msgsToTransmit))
     {
         uint32_t len;
+        struct can_frame *frame = (struct can_frame *)priv->tx_skb_buf[priv->tx_tail]->data;
 
         tcan4550_composeMessage(priv->tx_skb_buf[priv->tx_tail], &priv->txBuffer[msgs*4]);
 
-        can_put_echo_skb(priv->tx_skb_buf[priv->tx_tail], priv->ndev, 0, 0);
+        // put message on echo stack
+        can_put_echo_skb(priv->tx_skb_buf[priv->tx_tail], priv->ndev, 0, frame->len);
+        
+        // loop back the message
+        // TODO: this should preferably be done when we are sure the message is actually sent in tx interrupt
         len = can_get_echo_skb(priv->ndev, 0, 0);
-        can_free_echo_skb(priv->ndev, 0, 0);
+
+        // as we loop back the message, we also need to increase rx stats
+        // Note: The original TCAN driver and also flexcan driver does this using rx_offload, other drivers such as Kvaser does not
+        stats->rx_packets++;
+        stats->rx_bytes+=len;
 
         requestMask += (1 << writeIndexTmp);    // add current message to request mask
 
@@ -524,10 +533,14 @@ bool tcan4550_recMsgs(struct net_device *dev)
             cf->data[6] = (data[3] >> 16) & 0xFF;
             cf->data[7] = (data[3] >> 24) & 0xFF;
 
-            netif_rx(skb);  // Send data to Linux networking stack
+            netif_rx(skb);  // Send message to Linux networking stack
 
             stats->rx_packets++;
             stats->rx_bytes += cf->len;
+        }
+        else
+        {
+            stats->rx_dropped++;
         }
     }
 
@@ -554,29 +567,48 @@ static irqreturn_t tcan4450_handleInterrupts(int irq, void *dev)
         tcan4550_recMsgs(dev);
     }
 
-    // Tx fifo empty
+    // tx fifo empty
     if (ir & TFE)
     {
         netif_wake_queue(dev);
     }
 
-    // bus off
+    // Bus off. Basically switch off everything. Linux can device will call tcan4550_set_mode with mode=RESTART if restart-ms is set up.
     if (ir & BO)
     {
-        priv->can.can_stats.bus_off++;
+        struct sk_buff *skb;
+        struct can_frame *cf;
+
         can_bus_off(dev);   // tell Linux networking stack that we are bus off
+
+        priv->can.can_stats.bus_off++;
+        priv->can.state = CAN_STATE_BUS_OFF;
+
+        spi_write32(priv->spi, IE, 0);  // disable all interrupts to avoid flooding
+
+        skb = alloc_can_err_skb((struct net_device*)dev, &cf);
+        if(skb)
+        {
+            cf->can_id |= CAN_ERR_BUSOFF;
+
+            netif_rx(skb);
+        }
+        
+        netif_stop_queue(dev);  // We can not handle any pacakges so stop Linux sending us pacakges
     }
 
     // error warning
     if (ir & EW)
     {
         priv->can.can_stats.error_warning++;
+        priv->can.state = CAN_STATE_ERROR_WARNING;
     }
 
     // error passive
     if (ir & EP)
     {
         priv->can.can_stats.error_passive++;
+        priv->can.state = CAN_STATE_ERROR_PASSIVE;
     }
 
     return IRQ_HANDLED;
@@ -619,10 +651,10 @@ void tcan4550_hwReset(struct net_device *dev)
     struct tcan4550_priv *priv = netdev_priv(dev);
 
     gpiod_set_value(priv->reset_gpio, 1);
-    usleep_range(30, 100); // toggle pin for at least 30us
+    usleep_range(50, 100); // toggle pin for at least 30us
     gpiod_set_value(priv->reset_gpio, 0);
 
-    usleep_range(1700, 2000); // we need to wait at least 700us for chip to become ready
+    usleep_range(1500, 2000); // we need to wait at least 700us for chip to become ready
 }
 
 // initialize tcan4550 hardware
@@ -637,17 +669,7 @@ static bool tcan4550_init(struct net_device *dev, uint32_t bitRateReg)
     tcan4550_configure_mram(priv->spi);
     tcan4550_setupInterrupts(priv->spi);
 
-    // start interrupt handler
-    // as SPI is slow, run as threaded irq
-    err = request_threaded_irq(priv->spi->irq, NULL, tcan4450_handleInterrupts, IRQF_ONESHOT, dev->name, dev);
-    if (err)
-    {
-        netdev_err(dev, "failed to register interrupt\n");
-
-        return false;
-    }
-
-    // after this chip is ready to send/receive messages
+    // after this call, the TCAN chip is ready to send/receive messages
     tcan4550_set_normal_mode(priv->spi);
 
     return true;
@@ -665,7 +687,7 @@ static int tcan_open(struct net_device *dev)
     uint32_t bitRateReg = (bt->phase_seg2 - 1) + ((bt->prop_seg + bt->phase_seg1 - 1) << 8) + ((bt->brp - 1) << 16) + ((bt->sjw - 1) << 25);
     int err;
 
-    /* open the can device */
+    // open the can device
     err = open_candev(dev);
     if (err)
     {
@@ -675,17 +697,30 @@ static int tcan_open(struct net_device *dev)
 
     if (!tcan4550_init(dev, bitRateReg))
     {
-        netdev_err(dev, "failed to init tcan\n");
+        netdev_err(dev, "failed to init TCAN\n");
 
         close_candev(dev);
 
         return -ENXIO;
     }
 
+    // start interrupt handler, as SPI is slow, run as threaded irq
+    err = request_threaded_irq(priv->spi->irq, NULL, tcan4450_handleInterrupts, IRQF_ONESHOT, dev->name, dev);
+    if (err)
+    {
+        netdev_err(dev, "failed to register interrupt\n");
+
+        close_candev(dev);
+
+        return err;
+    }
+
     priv->tx_head = 0;
     priv->tx_tail = 0;
 
-    netif_start_queue(dev);
+    priv->can.state = CAN_STATE_ERROR_ACTIVE;
+    
+    netif_start_queue(dev); // This will make Linux network stack start send us packages
 
     return 0;
 }
@@ -696,8 +731,12 @@ static int tcan_close(struct net_device *dev)
     struct tcan4550_priv *priv = netdev_priv(dev);
 
     netif_stop_queue(dev);
+    priv->can.state = CAN_STATE_STOPPED;
+
     close_candev(dev);
     free_irq(priv->spi->irq, dev);
+
+    tcan4550_set_standby_mode(priv->spi);
 
     return 0;
 }
@@ -731,7 +770,7 @@ static netdev_tx_t tcan_start_xmit(struct sk_buff *skb,
     
     if(tmpHead == priv->tx_tail)
     {
-        netif_stop_queue(dev);  // queue will be started again from tfe interrupt
+        netif_stop_queue(dev);  // queue will be started again from TFE interrupt
 
         spin_unlock_irqrestore(&tx_skb_lock, flags);
 
@@ -748,6 +787,39 @@ static netdev_tx_t tcan_start_xmit(struct sk_buff *skb,
     queue_work(priv->wq, &priv->tx_work);
 
     return NETDEV_TX_OK;
+}
+
+// called automatically from linux can device if bus off is detected and restart-ms is set
+// or manually by calling 'ip link set canX type can restart'
+static int tcan4550_set_mode(struct net_device *dev, enum can_mode mode)
+{
+    struct tcan4550_priv *priv = netdev_priv(dev);
+    const struct can_bittiming *bt = &priv->can.bittiming;
+    uint32_t bitRateReg = (bt->phase_seg2 - 1) + ((bt->prop_seg + bt->phase_seg1 - 1) << 8) + ((bt->brp - 1) << 16) + ((bt->sjw - 1) << 25);
+
+    switch (mode) 
+    {
+        case CAN_MODE_START:
+        priv->tx_head = 0;
+        priv->tx_tail = 0;
+        priv->can.state = CAN_STATE_ERROR_ACTIVE;
+
+        // NOTE! when this call returns we will get interrupts again so be very careful what is done after this call
+        if (!tcan4550_init(dev, bitRateReg))
+        {
+            netdev_err(dev, "failed to init tcan\n");
+
+            return -ENXIO;
+        }
+
+        netif_start_queue(dev); 
+        break;
+        
+        default:
+        return -EOPNOTSUPP;
+    }
+
+    return 0;
 }
 
 static const struct net_device_ops m_can_netdev_ops = {
@@ -770,9 +842,10 @@ static int tcan_probe(struct spi_device *spi)
         .value = 0
     };
 
-    ndev = alloc_candev(sizeof(struct tcan4550_priv), 16);  // TODO: fix size
+    ndev = alloc_candev(sizeof(struct tcan4550_priv), ECHO_BUFFERS);
     if (!ndev)
     {
+        dev_err(&spi->dev, "could not allocated candev\n");
         return -ENOMEM;
     }
 
@@ -785,11 +858,12 @@ static int tcan_probe(struct spi_device *spi)
     priv->spi = spi;
     priv->can.bittiming_const = &tcan4550_bittiming_const;
     priv->can.clock.freq = 40000000;    // TODO: read from devicetree
+    priv->can.do_set_mode = tcan4550_set_mode;
 
     ndev->netdev_ops = &m_can_netdev_ops;
-    ndev->flags |= IFF_ECHO;
+    ndev->flags |= IFF_ECHO;    // Tell Linux we support echo
 
-    spi->bits_per_word = 8;
+    spi->bits_per_word = 8; // Note: For instance Raspberry Pi 4 only support 8-bit transfers, imx8 support 32-bit
     spi->max_speed_hz = 18000000;   // TODO: read from devicetree
     spi->cs_setup = delay;
     spi->cs_hold = delay;
@@ -799,6 +873,7 @@ static int tcan_probe(struct spi_device *spi)
     err = spi_setup(spi);
     if (err)
     {
+        dev_err(&spi->dev, "could not setup SPI\n");
         goto exit_free;
     }
 
@@ -813,15 +888,14 @@ static int tcan_probe(struct spi_device *spi)
     usleep_range(1000, 2000);
     tcan4550_hwReset(ndev);
 
+    // TODO: reading once should be enough
     // read chip identification to verify correct chip is there
     if (!tcan4550_readIdentification(spi))
     {
         if (!tcan4550_readIdentification(spi))
         {
             dev_err(&spi->dev, "failed to read TCAN4550 identification\n");
-
             err = -ENODEV;
-
             goto exit_unregister;
         }
     }
@@ -829,6 +903,7 @@ static int tcan_probe(struct spi_device *spi)
     priv->wq = alloc_workqueue("tcan4550_wq", WQ_FREEZABLE | WQ_MEM_RECLAIM, 1);
     if (!priv->wq)
     {
+        dev_err(&spi->dev, "could not allocate workqueue\n");
         err = -ENOMEM;
         goto exit_unregister;
     }
