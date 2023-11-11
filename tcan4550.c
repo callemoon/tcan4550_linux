@@ -106,6 +106,12 @@ struct tcan4550_priv
     struct gpio_desc *reset_gpio;
     uint32_t rxBuffer[MAX_BURST_RX_MESSAGES*4];
     uint32_t txBuffer[MAX_BURST_TX_MESSAGES*4];
+    
+    unsigned char rx_txBuf[4+(MAX_BURST_RX_MESSAGES*16)];
+    unsigned char rx_rxBuf[4+(MAX_BURST_RX_MESSAGES*16)];
+
+    unsigned char tx_txBuf[4+(MAX_BURST_TX_MESSAGES*16)];
+    unsigned char tx_rxBuf[4+(MAX_BURST_TX_MESSAGES*16)];
 };
 
 // TCAN function headers
@@ -130,8 +136,8 @@ static bool tcan4550_recMsgs(struct net_device *dev);
 static int spi_transfer(struct spi_device *spi, int lenBytes, unsigned char *rxBuf, unsigned char *txBuf);
 static uint32_t spi_read32(struct spi_device *spi, uint32_t address);
 static int spi_write32(struct spi_device *spi, uint32_t address, uint32_t data);
-static int spi_write_msgs(struct spi_device *spi, uint32_t address, int32_t msgs, uint32_t *data);
-static int spi_read_msgs(struct spi_device *spi, uint32_t address, int32_t msgs, uint32_t *data);
+static int spi_write_msgs(struct tcan4550_priv *priv, uint32_t address, int32_t msgs, uint32_t *data);
+static int spi_read_msgs(struct tcan4550_priv *priv, uint32_t address, int32_t msgs, uint32_t *data);
 
 /*------------------------------------------------------------*/
 /* SPI helper functions                                       */
@@ -183,11 +189,8 @@ static uint32_t spi_read32(struct spi_device *spi, uint32_t address)
     return (rxBuf[4] << 24) + (rxBuf[5] << 16) + (rxBuf[6] << 8) + rxBuf[7];
 }
 
-static int spi_read_msgs(struct spi_device *spi, uint32_t address, int32_t msgs, uint32_t *data)
+static int spi_read_msgs(struct tcan4550_priv *priv, uint32_t address, int32_t msgs, uint32_t *data)
 {
-    unsigned char txBuf[4+(MAX_BURST_RX_MESSAGES*16)];
-    unsigned char rxBuf[4+(MAX_BURST_RX_MESSAGES*16)];
-
     int ret;
     uint32_t i;
 
@@ -196,19 +199,19 @@ static int spi_read_msgs(struct spi_device *spi, uint32_t address, int32_t msgs,
         return -EINVAL;
     }
 
-    txBuf[0] = 0x41;
-    txBuf[1] = address >> 8;
-    txBuf[2] = address & 0xFF;
-    txBuf[3] = msgs*4;
+    priv->rx_txBuf[0] = 0x41;
+    priv->rx_txBuf[1] = address >> 8;
+    priv->rx_txBuf[2] = address & 0xFF;
+    priv->rx_txBuf[3] = msgs*4;
 
-    ret = spi_transfer(spi, 4 + (msgs * 16), rxBuf, txBuf);
+    ret = spi_transfer(priv->spi, 4 + (msgs * 16), priv->rx_rxBuf, priv->rx_txBuf);
 
     for(i = 0; i < (msgs*4); i++)
     {
-        data[0 + (i*4)] = rxBuf[7+(i*16)] + (rxBuf[6 + (i*16)] << 8) + (rxBuf[5 + (i*16)] << 16) + (rxBuf[4 + (i*16)] << 24);
-        data[1 + (i*4)] = rxBuf[11 + (i*16)] + (rxBuf[10 + (i*16)] << 8) + (rxBuf[9 + (i*16)] << 16) + (rxBuf[8 + (i*16)] << 24);
-        data[2 + (i*4)] = rxBuf[15 + (i*16)] + (rxBuf[14 + (i*16)] << 8) + (rxBuf[13 + (i*16)] << 16) + (rxBuf[12 + (i*16)] << 24);
-        data[3 + (i*4)] = rxBuf[19 + (i*16)] + (rxBuf[18 + (i*16)] << 8) + (rxBuf[17 + (i*16)] << 16) + (rxBuf[16 + (i*16)] << 24);
+        data[0 + (i*4)] = priv->rx_rxBuf[7+(i*16)] + (priv->rx_rxBuf[6 + (i*16)] << 8) + (priv->rx_rxBuf[5 + (i*16)] << 16) + (priv->rx_rxBuf[4 + (i*16)] << 24);
+        data[1 + (i*4)] = priv->rx_rxBuf[11 + (i*16)] + (priv->rx_rxBuf[10 + (i*16)] << 8) + (priv->rx_rxBuf[9 + (i*16)] << 16) + (priv->rx_rxBuf[8 + (i*16)] << 24);
+        data[2 + (i*4)] = priv->rx_rxBuf[15 + (i*16)] + (priv->rx_rxBuf[14 + (i*16)] << 8) + (priv->rx_rxBuf[13 + (i*16)] << 16) + (priv->rx_rxBuf[12 + (i*16)] << 24);
+        data[3 + (i*4)] = priv->rx_rxBuf[19 + (i*16)] + (priv->rx_rxBuf[18 + (i*16)] << 8) + (priv->rx_rxBuf[17 + (i*16)] << 16) + (priv->rx_rxBuf[16 + (i*16)] << 24);
     }
 
     return ret;
@@ -235,10 +238,8 @@ static int spi_write32(struct spi_device *spi, uint32_t address, uint32_t data)
     return ret;
 }
 
-static int spi_write_msgs(struct spi_device *spi, uint32_t address, int32_t msgs, uint32_t *data)
+static int spi_write_msgs(struct tcan4550_priv *priv, uint32_t address, int32_t msgs, uint32_t *data)
 {
-    unsigned char txBuf[4+(MAX_BURST_TX_MESSAGES*16)];
-    unsigned char rxBuf[4+(MAX_BURST_TX_MESSAGES*16)];
     uint32_t i;
     int ret;
 
@@ -247,20 +248,20 @@ static int spi_write_msgs(struct spi_device *spi, uint32_t address, int32_t msgs
        return -EINVAL;
     }
 
-    txBuf[0] = 0x61;
-    txBuf[1] = address >> 8;
-    txBuf[2] = address & 0xFF;
-    txBuf[3] = msgs*4;
+    priv->tx_txBuf[0] = 0x61;
+    priv->tx_txBuf[1] = address >> 8;
+    priv->tx_txBuf[2] = address & 0xFF;
+    priv->tx_txBuf[3] = msgs*4;
 
     for(i = 0; i < (msgs * 4); i++)
     {
-        txBuf[4 + (i*4)] = ((data[i] >> 24) & 0xFF);
-        txBuf[5 + (i*4)] = ((data[i] >> 16) & 0xFF);
-        txBuf[6 + (i*4)] = ((data[i] >> 8) & 0xFF);
-        txBuf[7 + (i*4)] = (data[i] & 0xFF);
+        priv->tx_txBuf[4 + (i*4)] = ((data[i] >> 24) & 0xFF);
+        priv->tx_txBuf[5 + (i*4)] = ((data[i] >> 16) & 0xFF);
+        priv->tx_txBuf[6 + (i*4)] = ((data[i] >> 8) & 0xFF);
+        priv->tx_txBuf[7 + (i*4)] = (data[i] & 0xFF);
     }
 
-    ret = spi_transfer(spi, 4+(msgs*16), rxBuf, txBuf);
+    ret = spi_transfer(priv->spi, 4+(msgs*16), priv->tx_rxBuf, priv->tx_txBuf);
 
     return ret;
 }
@@ -455,7 +456,7 @@ static void tcan4550_tx_work_handler(struct work_struct *ws)
 
     if(msgs > 0)
     {
-        spi_write_msgs(priv->spi, baseAddress, msgs, priv->txBuffer);   // write message data
+        spi_write_msgs(priv, baseAddress, msgs, priv->txBuffer);   // write message data
 
         spi_write32(priv->spi, TXBAR, requestMask); // request buffer transmission
     }
@@ -493,7 +494,7 @@ bool tcan4550_recMsgs(struct net_device *dev)
         msgsToGet = MAX_BURST_RX_MESSAGES;
     }
     
-    spi_read_msgs(priv->spi, baseAddress, msgsToGet, priv->rxBuffer);
+    spi_read_msgs(priv, baseAddress, msgsToGet, priv->rxBuffer);
 
     spi_write32(priv->spi, RXF0A, (getIndex + msgsToGet - 1)); // acknowledge the last message we have read, that will automatically free all messages read
 
@@ -661,7 +662,6 @@ void tcan4550_hwReset(struct net_device *dev)
 static bool tcan4550_init(struct net_device *dev, uint32_t bitRateReg)
 {
     struct tcan4550_priv *priv = netdev_priv(dev);
-    int err;
 
     tcan4550_set_standby_mode(priv->spi);
     tcan4550_unlock(priv->spi);
