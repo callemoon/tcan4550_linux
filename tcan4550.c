@@ -507,12 +507,7 @@ bool tcan4550_recMsgs(struct net_device *dev)
 
         if (skb)
         {
-            uint32_t data[4];
-
-            data[0] = priv->rxBuffer[0+(i*4)];
-            data[1] = priv->rxBuffer[1+(i*4)];
-            data[2] = priv->rxBuffer[2+(i*4)];
-            data[3] = priv->rxBuffer[3+(i*4)];
+            uint32_t *data = (uint32_t *)&priv->rxBuffer[0+(i*4)];
 
             cf->len = (data[1] >> 16) & 0x7F;
         
