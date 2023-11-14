@@ -34,18 +34,16 @@ RX >70%@1000kbit/s
 
 ## Additional supported functions
 
-loopback - ip link set can0 type can loopback on
-
-one-shot - ip link set can0 type can one-shot on
-
-listen-only - ip link set can0 type can listen-only on
+loopback - ip link set can0 type can loopback on (loop rx <=> tx pins on CAN controller internally)  
+one-shot - ip link set can0 type can one-shot on (do not retransmit in case of transmit failure)  
+listen-only - ip link set can0 type can listen-only on (do not send anything, not even ack for received packges)  
 
 ## Limitations
 Does not support CAN FD   
-Does not support bus off recovery  
-Does not support suspend/resume  
-Does not support silent mode  
+Does not support suspend/resume   
 
+## References
+https://www.kernel.org/doc/html/v6.6/networking/can.html
 
 
 
