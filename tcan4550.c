@@ -27,7 +27,7 @@ const static uint32_t MODES_OF_OPERATION = 0x0800;
 const static uint32_t INTERRUPT_FLAGS = 0x0820;
 const static uint32_t INTERRUPT_ENABLE = 0x0830;
 
-const static uint32_t TEST	= 0x1010;
+const static uint32_t TEST = 0x1010;
 const static uint32_t CCCR = 0x1018;
 const static uint32_t NBTP = 0x101C;
 const static uint32_t IR = 0x1050;  // interrupt register
