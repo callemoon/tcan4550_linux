@@ -16,7 +16,7 @@
 #include <linux/version.h>
 #include <linux/netlink.h>
 
-#define USE_32BIT_SPI_TRANSFERS
+//#define USE_32BIT_SPI_TRANSFERS
 
 // TCAN4550 Registers
 const static uint32_t DEVICE_ID1 = 0x0;
