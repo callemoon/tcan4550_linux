@@ -465,6 +465,8 @@ static void tcan4550_tx_work_handler(struct work_struct *ws)
     // build an SPI message consisting of several CAN msgs
     while((priv->tx_head != priv->tx_tail) && (msgs < msgsToTransmit))
     {
+        int len;
+
         struct can_frame *frame = (struct can_frame *)priv->tx_skb_buf[priv->tx_tail]->data;
 
         tcan4550_composeMessage(priv->tx_skb_buf[priv->tx_tail], &priv->txBuffer[msgs*4]);
@@ -474,7 +476,7 @@ static void tcan4550_tx_work_handler(struct work_struct *ws)
 
         // loop back the message
         // TODO: this should preferably be done when we are sure the message is actually sent in tx interrupt
-        can_get_echo_skb(priv->ndev, 0, 0);
+        len = can_get_echo_skb(priv->ndev, 0, 0);
 
         // as we loop back the message, we also need to increase rx stats
         // Note: The original TCAN driver and also flexcan driver does this using rx_offload, other drivers such as Kvaser does not
@@ -988,8 +990,6 @@ static int tcan_probe(struct spi_device *spi)
     ndev->netdev_ops = &m_can_netdev_ops;
     ndev->flags |= IFF_ECHO;    // Tell Linux we support echo
 
-    dev_set_drvdata(&spi->dev, priv);
-
 #ifdef USE_32BIT_SPI_TRANSFERS
     spi->bits_per_word = 32;
 #else
@@ -1071,13 +1071,15 @@ void tcan_remove(struct spi_device *spi)
 
 static __maybe_unused int tcan4x5x_suspend(struct device *dev)
 {
-    struct tcan4550_priv *priv = dev_get_drvdata(dev);
+    struct spi_device *spi = to_spi_device(dev);
+    struct tcan4550_priv *priv = spi_get_drvdata(spi);
     struct net_device *ndev = priv->ndev;
+
+    disable_irq(spi->irq);
 
     if (netif_running(ndev))
     {
-        tcan4550_set_standby_mode(priv->spi);
-        spi_write32(priv->spi, IE, 0);
+        tcan4550_set_standby_mode(spi);
         netif_stop_queue(ndev);
         netif_device_detach(ndev);
     }
@@ -1088,7 +1090,8 @@ static __maybe_unused int tcan4x5x_suspend(struct device *dev)
 
 static __maybe_unused int tcan4x5x_resume(struct device *dev)
 {
-    struct tcan4550_priv *priv = dev_get_drvdata(dev);
+    struct spi_device *spi = to_spi_device(dev);
+    struct tcan4550_priv *priv = spi_get_drvdata(spi);
     struct net_device *ndev = priv->ndev;
 
     priv->can.state = CAN_STATE_ERROR_ACTIVE;
@@ -1111,6 +1114,8 @@ static __maybe_unused int tcan4x5x_resume(struct device *dev)
             return -ENXIO;
         }
     }
+
+    enable_irq(spi->irq);
 
     return 0;
 }
