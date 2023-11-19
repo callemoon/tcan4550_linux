@@ -29,7 +29,7 @@ const static uint32_t MODES_OF_OPERATION = 0x0800;
 const static uint32_t INTERRUPT_FLAGS = 0x0820;
 const static uint32_t INTERRUPT_ENABLE = 0x0830;
 
-const static uint32_t TEST	= 0x1010; // test register
+const static uint32_t TEST = 0x1010; // test register
 const static uint32_t CCCR = 0x1018; // cc control register
 const static uint32_t NBTP = 0x101C; // nominal bit timing & prescaler register
 const static uint32_t PSR = 0x1044; // protocol status register
@@ -968,7 +968,7 @@ static int tcan_probe(struct spi_device *spi)
     ndev = alloc_candev(sizeof(struct tcan4550_priv), ECHO_BUFFERS);
     if (!ndev)
     {
-        dev_err(&spi->dev, "could not allocated candev\n");
+        dev_err(&spi->dev, "could not allocate candev\n");
         return -ENOMEM;
     }
 
