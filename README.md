@@ -23,14 +23,19 @@ To stop and unload the driver run script: ./stop_can.sh
 
 Adjust bitrate by editing the start_can.sh script  
 
+## To run driver on Raspberry Pi 5
+Driver also works on Raspberry Pi 5 with some limitations.
+start_can.sh and stop_can.sh script will give a warning message.
+Max rx and tx burst size must be set to 3 or lower.
+
 ## Performance test
 Install can-utils with sudo apt-get install can-utils  
 
 To generate bus load use cangen can0 -g0 (g0 means no gap between messages)  
 To measure busload use canbusload can0@1000000  
 
-TX >70%@1000kbit/s  
-RX >70%@1000kbit/s  
+TX >80%@1000kbit/s  
+RX >80%@1000kbit/s  
 
 ## Additional supported functions
 
@@ -39,8 +44,7 @@ one-shot - ip link set can0 type can one-shot on (do not retransmit in case of t
 listen-only - ip link set can0 type can listen-only on (do not send anything, not even ack for received packges)  
 
 ## Limitations
-Does not support CAN FD   
-Does not support suspend/resume   
+Does not support CAN FD
 
 ## References
 https://www.kernel.org/doc/html/v6.6/networking/can.html
