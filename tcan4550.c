@@ -20,8 +20,8 @@
 
 // 32-bit SPI transfers are a little faster as there is no delay between the bytes in a word.
 // However, for instance Raspberry Pi 4 only support 8-bit transfers
-#define USE_32BIT_SPI_TRANSFERS
-#define MSB_LSB_SWAP
+//#define USE_32BIT_SPI_TRANSFERS
+//#define MSB_LSB_SWAP
 #define NAPI
 
 // TCAN4550 Registers
@@ -96,8 +96,8 @@ const static uint32_t MRAM_BASE = 0x8000;       // do not change
 const static uint32_t MRAM_SIZE_WORDS = 512;    // do not change
 
 // SPI burst settings
-#define MAX_SPI_BURST_TX_MESSAGES   3  // Max CAN messages in a SPI write. A high value gives better TX throughput but can lead to lost rx messages due to blocking rx too long.
-#define MAX_SPI_BURST_RX_MESSAGES   3   // Max CAN messages in a SPI read
+#define MAX_SPI_BURST_TX_MESSAGES   16  // Max CAN messages in a SPI write. A high value gives better TX throughput but can lead to lost rx messages due to blocking rx too long.
+#define MAX_SPI_BURST_RX_MESSAGES   16   // Max CAN messages in a SPI read
 
 // Buffer configuration
 #define TX_BUFFER_SIZE (16 + 1) // size of tx-buffer used between Linux networking stack and SPI. One slot is reserved to be able to keep track of if queue is full
