@@ -96,8 +96,8 @@ const static uint32_t MRAM_BASE = 0x8000;       // do not change
 const static uint32_t MRAM_SIZE_WORDS = 512;    // do not change
 
 // SPI burst settings
-#define MAX_SPI_BURST_TX_MESSAGES   8  // Max CAN messages in a SPI write. A high value gives better TX throughput but can lead to lost rx messages due to blocking rx too long.
-#define MAX_SPI_BURST_RX_MESSAGES   16   // Max CAN messages in a SPI read
+#define MAX_SPI_BURST_TX_MESSAGES   3  // Max CAN messages in a SPI write. A high value gives better TX throughput but can lead to lost rx messages due to blocking rx too long.
+#define MAX_SPI_BURST_RX_MESSAGES   3   // Max CAN messages in a SPI read
 
 // Buffer configuration
 #define TX_BUFFER_SIZE (16 + 1) // size of tx-buffer used between Linux networking stack and SPI. One slot is reserved to be able to keep track of if queue is full
@@ -894,7 +894,7 @@ static irqreturn_t tcan4450_handleInterrupts(int irq, void *dev)
     // handle bus errorrs (error warning, error passive or bus off)
     if ((ir & EW) || (ir & EP) || (ir & BO))
     {
-        //tcan4450_handleBusStatusChange(dev);
+        tcan4450_handleBusStatusChange(dev);
     }
 
     return IRQ_HANDLED;
@@ -1234,7 +1234,7 @@ static int tcan_probe(struct spi_device *spi)
 
 #ifdef NAPI
     dev_info(&spi->dev, "setting up napi\n");
-    netif_napi_add(priv->ndev, &(priv->napi), tcan4550_poll, NAPI_BUDGET);
+    netif_napi_add_weight(priv->ndev, &(priv->napi), tcan4550_poll, NAPI_BUDGET);
 #endif
 
     dev_info(&spi->dev, "device registered\n");
