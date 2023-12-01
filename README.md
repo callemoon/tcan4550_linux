@@ -24,9 +24,8 @@ To stop and unload the driver run script: ./stop_can.sh
 Adjust bitrate by editing the start_can.sh script  
 
 ## To run driver on Raspberry Pi 5
-Driver also works on Raspberry Pi 5 with some limitations.
-start_can.sh and stop_can.sh script will give a warning message.
-Max rx and tx burst size must be set to 3 or lower.
+This driver also works on Raspberry Pi 5 but due to a bug in the SPI driver for Pi 5 MAX_SPI_BURST_TX_MESSAGES and MAX_SPI_BURST_TX_MESSAGES
+must be set to 3 or lower.
 
 ## Performance test
 Install can-utils with sudo apt-get install can-utils  
@@ -35,7 +34,7 @@ To generate bus load use cangen can0 -g0 (g0 means no gap between messages)
 To measure busload use canbusload can0@1000000  
 
 TX >80%@1000kbit/s  
-RX >80%@1000kbit/s  
+RX >90%@1000kbit/s  
 
 ## Additional supported functions
 
