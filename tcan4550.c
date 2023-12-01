@@ -20,8 +20,8 @@
 
 // 32-bit SPI transfers are a little faster as there is no delay between the bytes in a word.
 // However, for instance Raspberry Pi 4 only support 8-bit transfers
-//#define USE_32BIT_SPI_TRANSFERS
-//#define MSB_LSB_SWAP
+#define USE_32BIT_SPI_TRANSFERS
+#define MSB_LSB_SWAP
 #define NAPI
 
 // TCAN4550 Registers
@@ -96,14 +96,17 @@ const static uint32_t MRAM_BASE = 0x8000;       // do not change
 const static uint32_t MRAM_SIZE_WORDS = 512;    // do not change
 
 // SPI burst settings
-#define MAX_SPI_BURST_TX_MESSAGES   3  // Max CAN messages in a SPI write. A high value gives better TX throughput but can lead to lost rx messages due to blocking rx too long.
-#define MAX_SPI_BURST_RX_MESSAGES   3   // Max CAN messages in a SPI read
+#define MAX_SPI_BURST_TX_MESSAGES   8  // Max CAN messages in a SPI write. A high value gives better TX throughput but can lead to lost rx messages due to blocking rx too long.
+#define MAX_SPI_BURST_RX_MESSAGES   16   // Max CAN messages in a SPI read
 
 // Buffer configuration
 #define TX_BUFFER_SIZE (16 + 1) // size of tx-buffer used between Linux networking stack and SPI. One slot is reserved to be able to keep track of if queue is full
-#define RX_BUFFER_SIZE (64 + 1)
 #define ECHO_BUFFERS    1
-#define NAPI_BUDGET 64  // maximum number of messages that NAPI will request
+
+#ifdef NAPI
+#define NAPI_BUDGET 8  // maximum number of messages that NAPI will request
+#define RX_BUFFER_SIZE (64 + 1) // size of rx-buffer used in NAPI mode
+#endif
 
 // Identifiers for TCAN4550 chip
 const static uint32_t TCAN_ID = 0x4E414354;
@@ -137,6 +140,11 @@ const static struct can_bittiming_const tcan4550_bittiming_const = {
     .brp_inc = 1,
 };
 
+struct can_raw
+{
+    uint32_t rawData[4];
+};
+
 struct tcan4550_priv
 {
     struct can_priv can; // must be located first in private struct
@@ -152,7 +160,7 @@ struct tcan4550_priv
     int tx_skb_buf_head;
     int tx_skb_buf_tail;
 
-    struct sk_buff *rx_skb_buf[RX_BUFFER_SIZE];
+    struct can_raw rx_skb_buf[RX_BUFFER_SIZE];
     int rx_skb_buf_head;
     int rx_skb_buf_tail;
 
@@ -529,13 +537,15 @@ static void tcan4550_sendMsgs(struct tcan4550_priv *priv)
 }
 
 #ifdef NAPI
-// this function is called from soft-irq context (NAPI) and is not allowed to sleep
+// this function is called from NAPI (soft-irq context) and is not allowed to sleep or call functions 
+// that might sleep like SPI access
 static int tcan4550_poll(struct napi_struct *_napi, int budget)
 {
     struct tcan4550_priv *priv = container_of(_napi, struct tcan4550_priv, napi);
+    struct net_device_stats *stats = &(priv->ndev->stats);
     uint32_t msgs = 0;
     unsigned long flags;
-    struct sk_buff *skb;
+    static uint32_t frameErrors = 0;
 
     if(budget == 0)
     {
@@ -544,15 +554,74 @@ static int tcan4550_poll(struct napi_struct *_napi, int budget)
 
     spin_lock_irqsave(&priv->rx_skb_lock, flags);
 
-    while((priv->rx_skb_buf_head != priv->rx_skb_buf_tail) && (msgs < budget))
+    if(stats->rx_frame_errors > frameErrors)
     {
-        skb = priv->rx_skb_buf[priv->rx_skb_buf_tail];
-        netif_receive_skb(skb); // send message to Linux networking stack
-        priv->rx_skb_buf_tail = (priv->rx_skb_buf_tail + 1) % RX_BUFFER_SIZE;
-        msgs++;
+        frameErrors = stats->rx_frame_errors;
+        dev_info(priv->dev, "frame error detected\n");
     }
 
-    // If all messages did fit within quota, tell NAPI we are ready. If msgs=quota, we shall NOT call napi_complete_done
+    while((priv->rx_skb_buf_head != priv->rx_skb_buf_tail) && (msgs < budget))
+    {
+        struct can_frame *cf;
+        struct sk_buff *skb = alloc_can_skb(priv->ndev, &cf);
+
+        if (skb)
+        {
+            uint32_t tmpValue;
+            uint32_t *data = (uint32_t *)&priv->rx_skb_buf[priv->rx_skb_buf_tail].rawData;
+            cf->len = (data[1] >> 16) & 0x0F;
+
+            if(cf->len > 8)
+            {
+                cf->len = 8;
+                dev_info(priv->dev, "unexpected frame length\n");
+            }
+
+            if(data[0] & (1 << 30)) // extended
+            {
+                cf->can_id = (data[0] & CAN_EFF_MASK) | CAN_EFF_FLAG;
+            }
+            else
+            {
+                cf->can_id = (data[0] >> 18) & CAN_SFF_MASK;
+            }
+
+            cf->data[0] = data[2] & 0xFF;
+            cf->data[1] = (data[2] >> 8) & 0xFF;
+            cf->data[2] = (data[2] >> 16) & 0xFF;
+            cf->data[3] = (data[2] >> 24) & 0xFF;
+            cf->data[4] = data[3] & 0xFF;
+            cf->data[5] = (data[3] >> 8) & 0xFF;
+            cf->data[6] = (data[3] >> 16) & 0xFF;
+            cf->data[7] = (data[3] >> 24) & 0xFF;
+
+            tmpValue = stats->rx_frame_errors;
+
+            netif_receive_skb(skb); // send message to Linux networking stack
+
+            if(stats->rx_frame_errors > tmpValue)
+            {
+                dev_info(priv->dev, "frame error detected %d %d\n", cf->can_id, cf->len);
+            }
+
+            priv->rx_skb_buf_tail = (priv->rx_skb_buf_tail + 1) % RX_BUFFER_SIZE;
+            msgs++;
+
+            stats->rx_packets++;
+            stats->rx_bytes += cf->len;
+        }
+        else
+        {
+            // we could try to allocate the skb again a little later but that might also fail so we drop the packet
+            priv->rx_skb_buf_tail = (priv->rx_skb_buf_tail + 1) % RX_BUFFER_SIZE;
+            msgs++;
+
+            stats->rx_dropped++;
+            dev_info(priv->dev, "could not allocate frame\n");
+        }
+    }
+
+    // If all messages did fit within budget, tell NAPI we are ready. If msgs=budget, we shall NOT call napi_complete_done
     if(msgs < budget)
     {
         napi_complete_done(&priv->napi, msgs);
@@ -621,67 +690,39 @@ uint32_t tcan4550_recMsgs(struct net_device *dev)
 
         for(i = 0; i < msgsToGet[spiPackage]; i++)
         {
-            struct can_frame *cf;
-            struct sk_buff *skb = alloc_can_skb(dev, &cf);
-
-            if (skb)
-            {
-                unsigned long flags;
-                uint32_t tmpHead;
-                uint32_t *data = (uint32_t *)&priv->rxBuffer[0 + (i * 4)];
-                cf->len = (data[1] >> 16) & 0x0F;
-
-                if(data[0] & (1 << 30)) // extended
-                {
-                    cf->can_id = (data[0] & CAN_EFF_MASK) | CAN_EFF_FLAG;
-                }
-                else
-                {
-                    cf->can_id = (data[0] >> 18) & CAN_SFF_MASK;
-                }
-
-                cf->data[0] = data[2] & 0xFF;
-                cf->data[1] = (data[2] >> 8) & 0xFF;
-                cf->data[2] = (data[2] >> 16) & 0xFF;
-                cf->data[3] = (data[2] >> 24) & 0xFF;
-                cf->data[4] = data[3] & 0xFF;
-                cf->data[5] = (data[3] >> 8) & 0xFF;
-                cf->data[6] = (data[3] >> 16) & 0xFF;
-                cf->data[7] = (data[3] >> 24) & 0xFF;
+            unsigned long flags;
+            uint32_t tmpHead;
+            uint32_t *data = (uint32_t *)&priv->rxBuffer[0 + (i * 4)];
 
 #ifdef NAPI
-                // store skb in rx buffer
-                spin_lock_irqsave(&priv->rx_skb_lock, flags);
-                
-                tmpHead = (priv->rx_skb_buf_head + 1) % RX_BUFFER_SIZE;
-                if(tmpHead == priv->rx_skb_buf_tail)
-                {
-                    stats->rx_dropped++;
-                    kfree_skb(skb);
-                }
-                else
-                {
-                    priv->rx_skb_buf[priv->rx_skb_buf_head] = skb;
-                    priv->rx_skb_buf_head = tmpHead;
-
-                    stats->rx_packets++;
-                    stats->rx_bytes += cf->len;
-                    msgsReceived++;
-                }
-
-                spin_unlock_irqrestore(&priv->rx_skb_lock, flags);
-#else
-                netif_rx(skb);  // Send message to Linux networking stack
-
-                stats->rx_packets++;
-                stats->rx_bytes += cf->len;
-                msgsReceived++;
-#endif
-            }
-            else
+            // store skb in rx buffer
+            spin_lock_irqsave(&priv->rx_skb_lock, flags);
+            
+            tmpHead = (priv->rx_skb_buf_head + 1) % RX_BUFFER_SIZE;
+            if(tmpHead == priv->rx_skb_buf_tail)
             {
                 stats->rx_dropped++;
             }
+            else
+            {
+                priv->rx_skb_buf[priv->rx_skb_buf_head].rawData[0] = data[0];
+                priv->rx_skb_buf[priv->rx_skb_buf_head].rawData[1] = data[1];
+                priv->rx_skb_buf[priv->rx_skb_buf_head].rawData[2] = data[2];
+                priv->rx_skb_buf[priv->rx_skb_buf_head].rawData[3] = data[3];
+                
+                priv->rx_skb_buf_head = tmpHead;
+
+                msgsReceived++;
+            }
+
+            spin_unlock_irqrestore(&priv->rx_skb_lock, flags);
+#else
+            netif_rx(skb);  // Send message to Linux networking stack
+
+            stats->rx_packets++;
+            stats->rx_bytes += cf->len;
+            msgsReceived++;
+#endif
         }
     }
 
@@ -698,6 +739,8 @@ static void tcan4450_handleBusStatusChange(void *dev)
     uint32_t rx_err = (err >> 8) & 0x7F;
     struct sk_buff *skb;
     struct can_frame *cf;
+
+    dev_info(priv->dev, "bus status change\r\n");
 
     // bus off
     if(psr & BUS_OFF)
@@ -851,7 +894,7 @@ static irqreturn_t tcan4450_handleInterrupts(int irq, void *dev)
     // handle bus errorrs (error warning, error passive or bus off)
     if ((ir & EW) || (ir & EP) || (ir & BO))
     {
-        tcan4450_handleBusStatusChange(dev);
+        //tcan4450_handleBusStatusChange(dev);
     }
 
     return IRQ_HANDLED;
@@ -1191,11 +1234,7 @@ static int tcan_probe(struct spi_device *spi)
 
 #ifdef NAPI
     dev_info(&spi->dev, "setting up napi\n");
-#if LINUX_VERSION_CODE < KERNEL_VERSION(5,19,0)    
     netif_napi_add(priv->ndev, &(priv->napi), tcan4550_poll, NAPI_BUDGET);
-#else
-    netif_napi_add_weight(priv->ndev, &(priv->napi), tcan4550_poll, NAPI_BUDGET);
-#endif
 #endif
 
     dev_info(&spi->dev, "device registered\n");
