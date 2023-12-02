@@ -1,6 +1,6 @@
 # TCAN4550 Linux kernel driver
 
-Tested with CAN FD Click 6 using a TCAN4550 chip https://www.mikroe.com/can-fd-6-click connected to a Raspberry Pi 4 running Pi OS bullseye 64-bit.
+Tested with CAN FD Click 6 using a TCAN4550 chip https://www.mikroe.com/can-fd-6-click connected to a Raspberry Pi 4 running Pi OS Boookworm 64-bit.
 
 ## To connect to Raspberry Pi 4
 
