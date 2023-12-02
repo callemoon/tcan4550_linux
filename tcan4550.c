@@ -283,7 +283,7 @@ static int spi_read_msgs(struct tcan4550_priv *priv, uint32_t address, int32_t m
 
     ret = spi_transfer(priv->spi, 4 + (msgs * 16), priv->read_rxBuf, priv->read_txBuf);
 
-    for(i = 0; i < (msgs * 4); i++)
+    for(i = 0; i < msgs; i++)
     {
         for(j = 0; j < 4; j++)
         {
