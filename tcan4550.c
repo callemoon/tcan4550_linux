@@ -86,7 +86,7 @@ const static uint32_t TX_SLOT_SIZE = 16;    // size of one element in the tx fif
 const static uint32_t TX_FIFO_SIZE = 32;    // possible values = 0 - 32
 const static uint32_t TX_FIFO_START_ADDRESS = 0x0;  // position in MRAM where tx fifo start (excluding MRAM base address)
 const static uint32_t RX_FIFO_SIZE = 64;    // possible values = 0 - 64
-const static uint32_t RX_FIFO_START_ADDRESS = 0x400;    // position in MRAM where rx fifo start (excluding MRAM base address)
+const static uint32_t RX_FIFO_START_ADDRESS = 0x200;    // position in MRAM where rx fifo start (excluding MRAM base address)
 const static uint32_t EVENT_FIFO_START_ADDRESS = 0x600; // position in MRAM where tx event fifo start (excluding MRAM base address)
 const static uint32_t EVENT_FIFO_SIZE = 32;             // elements in the event FIFO
 const static uint32_t EVENT_FIFO_WATERMARK = 26;        // watermark level to generate interrupt
