@@ -179,7 +179,7 @@ struct tcan4550_priv
 
 #ifdef NAPI
     struct napi_struct napi;
-#endif    
+#endif
 };
 
 // SPI helper function headers
@@ -531,13 +531,12 @@ static void tcan4550_sendMsgs(struct tcan4550_priv *priv)
     if(msgs > 0)
     {
         spi_write_msgs(priv, startAddress, msgs, priv->txBuffer);   // write message data
-
         spi_write32(priv->spi, TXBAR, requestMask); // request buffer transmission
     }
 }
 
 #ifdef NAPI
-// this function is called from NAPI (soft-irq context) and is not allowed to sleep or call functions 
+// this function is called from NAPI (soft-irq context) and is not allowed to sleep or call functions
 // that might sleep like SPI access
 static int tcan4550_poll(struct napi_struct *_napi, int budget)
 {
@@ -545,7 +544,6 @@ static int tcan4550_poll(struct napi_struct *_napi, int budget)
     struct net_device_stats *stats = &(priv->ndev->stats);
     uint32_t msgs = 0;
     unsigned long flags;
-    static uint32_t frameErrors = 0;
 
     if(budget == 0)
     {
@@ -553,12 +551,6 @@ static int tcan4550_poll(struct napi_struct *_napi, int budget)
     }
 
     spin_lock_irqsave(&priv->rx_skb_lock, flags);
-
-    if(stats->rx_frame_errors > frameErrors)
-    {
-        frameErrors = stats->rx_frame_errors;
-        dev_info(priv->dev, "frame error detected\n");
-    }
 
     while((priv->rx_skb_buf_head != priv->rx_skb_buf_tail) && (msgs < budget))
     {
@@ -598,11 +590,6 @@ static int tcan4550_poll(struct napi_struct *_napi, int budget)
             tmpValue = stats->rx_frame_errors;
 
             netif_receive_skb(skb); // send message to Linux networking stack
-
-            if(stats->rx_frame_errors > tmpValue)
-            {
-                dev_info(priv->dev, "frame error detected %d %d\n", cf->can_id, cf->len);
-            }
 
             priv->rx_skb_buf_tail = (priv->rx_skb_buf_tail + 1) % RX_BUFFER_SIZE;
             msgs++;
@@ -668,7 +655,7 @@ uint32_t tcan4550_recMsgs(struct net_device *dev)
     // if hw rx buffer wraps around, we need to make two SPI requests to get all data
     if(totalMsgsToGet > (RX_FIFO_SIZE - getIndex))
     {
-        msgsToGet[0] = (RX_FIFO_SIZE - getIndex);      // request as much as possible in SPI package 1
+        msgsToGet[0] = (RX_FIFO_SIZE - getIndex);      // request as many messages as possible in SPI package 1
         msgsToGet[1] = totalMsgsToGet - msgsToGet[0];  // request the rest in SPI package 2
 
         // Only request package 2 if it is large enough to not give too much overhead, otherwise wait
@@ -697,22 +684,22 @@ uint32_t tcan4550_recMsgs(struct net_device *dev)
 #ifdef NAPI
             // store skb in rx buffer
             spin_lock_irqsave(&priv->rx_skb_lock, flags);
-            
+
             tmpHead = (priv->rx_skb_buf_head + 1) % RX_BUFFER_SIZE;
-            if(tmpHead == priv->rx_skb_buf_tail)
-            {
-                stats->rx_dropped++;
-            }
-            else
+            if(tmpHead != priv->rx_skb_buf_tail)
             {
                 priv->rx_skb_buf[priv->rx_skb_buf_head].rawData[0] = data[0];
                 priv->rx_skb_buf[priv->rx_skb_buf_head].rawData[1] = data[1];
                 priv->rx_skb_buf[priv->rx_skb_buf_head].rawData[2] = data[2];
                 priv->rx_skb_buf[priv->rx_skb_buf_head].rawData[3] = data[3];
-                
+
                 priv->rx_skb_buf_head = tmpHead;
 
                 msgsReceived++;
+            }
+            else
+            {
+                stats->rx_dropped++;
             }
 
             spin_unlock_irqrestore(&priv->rx_skb_lock, flags);
@@ -842,13 +829,13 @@ static irqreturn_t tcan4450_handleInterrupts(int irq, void *dev)
     // rx fifo 0 new message
     if (ir & RF0N)
     {
-#ifdef NAPI   
+#ifdef NAPI
         tcan4550_recMsgs(dev);
-        
+
         local_bh_disable(); // disable bottom halves when calling napi_schedule to avoid error message "NOHZ tick-stop error: Non-RCU local softirq work is pending, handler #08!!!"
         napi_schedule(&priv->napi);
         local_bh_enable();
-#else        
+#else
         tcan4550_recMsgs(dev);
 #endif
     }
@@ -860,7 +847,7 @@ static irqreturn_t tcan4450_handleInterrupts(int irq, void *dev)
         priv->ndev->stats.rx_over_errors++;
     }
 
-/*
+#ifdef EVENT_FIFO
     // tx event fifo watermark level reached
     if(ir & TEFW)
     {
@@ -881,7 +868,7 @@ static irqreturn_t tcan4450_handleInterrupts(int irq, void *dev)
 
         netif_wake_queue(dev);
     }
-*/
+#endif
 
     // tx fifo empty
     if (ir & TFE)
@@ -891,7 +878,7 @@ static irqreturn_t tcan4450_handleInterrupts(int irq, void *dev)
         netif_wake_queue(dev);
     }
 
-    // handle bus errorrs (error warning, error passive or bus off)
+    // handle bus errors (error warning, error passive or bus off)
     if ((ir & EW) || (ir & EP) || (ir & BO))
     {
         tcan4450_handleBusStatusChange(dev);
@@ -1034,7 +1021,7 @@ static int tcan_open(struct net_device *dev)
 #ifdef NAPI
     dev_info(priv->dev, "NAPI enabled\n");
     napi_enable(&priv->napi);
-#endif    
+#endif
 
     netif_start_queue(dev); // This will make Linux network stack start send us packages
 
@@ -1050,7 +1037,7 @@ static int tcan_close(struct net_device *dev)
 #ifdef NAPI
     dev_info(priv->dev, "NAPI disabled\n");
     napi_disable(&priv->napi);
-#endif     
+#endif
     priv->can.state = CAN_STATE_STOPPED;
     close_candev(dev);
     free_irq(priv->spi->irq, dev);
@@ -1233,8 +1220,14 @@ static int tcan_probe(struct spi_device *spi)
     INIT_WORK(&priv->tx_work, tcan4550_tx_work_handler);
 
 #ifdef NAPI
-    dev_info(&spi->dev, "setting up napi\n");
+    dev_info(&spi->dev, "setting up NAPI\n");
+
+#if LINUX_VERSION_CODE > KERNEL_VERSION(6,1,0)
     netif_napi_add_weight(priv->ndev, &(priv->napi), tcan4550_poll, NAPI_BUDGET);
+#else
+    netif_napi_add(priv->ndev, &(priv->napi), tcan4550_poll, NAPI_BUDGET);
+#endif
+
 #endif
 
     dev_info(&spi->dev, "device registered\n");
