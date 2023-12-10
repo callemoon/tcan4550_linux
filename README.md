@@ -8,7 +8,7 @@ Driver uses Raspberry Pi SPI 0 so use standard Raspberry Pi SPI 0 pins (MOSI pin
 
 ## To build driver on Raspberry Pi 4
 
-Install kernel headers: 'sudo apt-get install raspberrypi-kernel-headers'  
+If not already installed, install kernel headers: 'sudo apt-get install raspberrypi-kernel-headers'  
 Call 'make'  
 
 A device tree overlay is used to connect driver to SPI0 bus of Raspberry Pi. To build device tree overlay binary from .dts file.  
@@ -24,8 +24,8 @@ To stop and unload the driver run script: ./stop_can.sh
 Adjust bitrate by editing the start_can.sh script  
 
 ## To run driver on Raspberry Pi 5
-This driver also works on Raspberry Pi 5 but due to a bug in the SPI driver for Pi 5 MAX_SPI_BURST_TX_MESSAGES and MAX_SPI_BURST_TX_MESSAGES
-must be set to 3 or lower.
+This driver also works on Raspberry Pi 5 but due to a bug in the SPI driver for Raspberry Pi 5, MAX_SPI_BURST_TX_MESSAGES and MAX_SPI_BURST_RX_MESSAGES
+must be set to 3 or lower. In contrary to Raspberry Pi 4, Raspberrby Pi 5 supports 32-bit SPI transfers.
 
 ## Performance test
 Install can-utils with sudo apt-get install can-utils  
