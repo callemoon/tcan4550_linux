@@ -38,8 +38,8 @@ const static uint32_t EVENT_FIFO_SIZE = 0; // elements in the event FIFO
 const static uint32_t EVENT_FIFO_WATERMARK = 0; // watermark level to generate interrupt
 
 // SPI burst settings. User adjustable.
-#define MAX_SPI_BURST_TX_MESSAGES  8 // Max CAN messages in a SPI write. A high value gives better TX throughput but can lead to lost rx messages due to blocking rx too long.
-#define MAX_SPI_BURST_RX_MESSAGES 32 // Max CAN messages in a SPI read
+#define MAX_SPI_BURST_TX_MESSAGES  3 // Max CAN messages in a SPI write. A high value gives better TX throughput but can lead to lost rx messages due to blocking rx too long.
+#define MAX_SPI_BURST_RX_MESSAGES 3 // Max CAN messages in a SPI read
 
 // Buffer configuration. User adjustable.
 #define TX_BUFFER_SIZE  (16 + 1) // size of tx-buffer used between Linux networking stack and SPI. One slot is reserved to be able to keep track of if queue is full
@@ -742,22 +742,16 @@ static void tcan4450_handle_bus_status_change(void *dev)
 
 	// bus off
 	if (psr & BUS_OFF) {
-		can_bus_off(dev); // tell Linux networking stack that we are bus off
-
-		priv->can.can_stats.bus_off++;
 		priv->can.state = CAN_STATE_BUS_OFF;
-
-		spi_write32(priv->spi, IE, 0); // disable all interrupts to avoid flooding
+		spi_write32(priv->spi, ILE, 0); // disable all interrupts to avoid flooding
+		priv->can.can_stats.bus_off++;
+		can_bus_off(dev); // tell Linux networking stack that we are bus off
 
 		skb = alloc_can_err_skb((struct net_device *)dev, &cf);
 		if (skb) {
 			cf->can_id |= CAN_ERR_BUSOFF;
-
 			netif_rx(skb);
 		}
-
-		// We can not handle any packages so stop Linux sending us packages
-		netif_stop_queue(dev);
 	}
 
 	// error passive
@@ -1089,7 +1083,7 @@ static int tcan4550_set_mode(struct net_device *dev, enum can_mode mode)
 		// NOTE! when this call returns we will get interrupts again so be very
 		// careful what is done after this call
 		tcan4550_init(dev, bitRateReg);
-		netif_start_queue(dev);
+		netif_wake_queue(dev);
 		break;
 
 	default:
